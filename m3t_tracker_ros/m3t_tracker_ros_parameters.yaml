@@ -4,22 +4,20 @@ m3t_tracker_ros:
     description: "Global path to the precomputed dataset of object modalities.",
     validation: {
       not_empty<>: [],
-      # TODO custom path validator
-    }
-  }
-
-  dataset_name: {
-    type: string,
-    description: "Name of the dataset to validate corespondance with vision_info messages.",
-    validation: {
-      not_empty<>: [],
-    }
+      "custom_validators::check_object_model_path": null
+    },
   }
 
   use_depth: {
     type: bool,
     default_value: false,
     description: "Whether to expect depth images to be published.",
+  }
+
+  time_sync_slop: {
+    type: double,
+    default_value: 0.05,
+    description: "Delay [seconds] with which incoming messages can be synchronized.",
   }
 
   depth_scale: {
@@ -81,10 +79,10 @@ m3t_tracker_ros:
   models: {
     type: string_array,
     default_value: ["region_model", "depth_model"],
-    description: "Walkaround to create two namespaces with the same set of parameters.",
+    description: "Walk-around to create two namespaces with the same set of parameters.",
     validation: {
       fixed_size<>: 2,
-      subset_of<>: ["region_model", "depth_model"],
+      subset_of<>: [["region_model", "depth_model"]],
       unique<>: []
     },
     read_only: true,
@@ -152,6 +150,7 @@ m3t_tracker_ros:
     description: "IDs of the objects found in the precomputed modalities folder used to track them.",
     read_only: true,
   }
+
   __map_tracked_objects: {
     region_modality: {
       n_lines_max: {

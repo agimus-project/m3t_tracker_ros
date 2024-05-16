@@ -29,4 +29,6 @@ repos:
   rev: v2.2.6
   hooks:
   - id: codespell
-    args: ['--write-changes']
+    args: ['--write-changes', '--check-filenames']
+    additional_dependencies:
+      - tomli
