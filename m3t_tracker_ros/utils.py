@@ -67,7 +67,7 @@ def update_object_config(
     :rtype: Union[pym3t.RegionModality, pym3t.DepthModality, pym3t.Optimizer]
     """
     for key, val in params_dict.items():
-        # Check if the binded object has a parameter
+        # Check if the bound object has a parameter
         if hasattr(modality, key):
             # Set new parameter value
             setattr(modality, key, val)
