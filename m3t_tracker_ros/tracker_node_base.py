@@ -2,23 +2,30 @@ import abc
 import numpy as np
 import numpy.typing as npt
 import pathlib
-from typing import Union
+from typing import Dict, Tuple, Union
 
 import pym3t
-
-from transforms3d.quaternion import quat2mat
 
 from rclpy.node import Node
 from rclpy.time import Time
 
+from cv_bridge import CvBridge
+
 from tf2_ros.buffer import Buffer
 from tf2_ros.transform_listener import TransformListener
 
-from message_filters import ApproximateTimeSynchronizer
-from message_filters import Subscriber
+from message_filters import ApproximateTimeSynchronizer, Subscriber
 
-from sensor_msgs.msg import Image, CameraInfo
+from sensor_msgs.msg import CameraInfo, Image
 from vision_msgs.msg import Detection2DArray, VisionInfo
+
+from m3t_tracker_ros.utils import (
+    camera_info_to_intrinsics,
+    check_dataset_path,
+    params_to_dict,
+    transform_msg_to_matrix,
+    update_object_config,
+)
 
 # Automatically generated file
 from m3t_tracker_ros.m3t_tracker_ros_parameters import m3t_tracker_ros  # noqa: E402
@@ -40,16 +47,36 @@ class TrackerNodeBase(Node):
             self.get_logger().error(str(e))
             raise e
 
+        self._objects_with_valid_paths = check_dataset_path(
+            self._params.dataset_path,
+            self._params.tracked_objects,
+            self._params.use_depth,
+        )
+        if len(self._objects_with_valid_paths != len(self._params.tracked_objects)):
+            diff = set(self._params.tracked_objects) - set(
+                self._objects_with_valid_paths.keys()
+            )
+            self.get_logger().error(f"Filed to load models for objects: {diff}!")
+
+        self._params_dict = params_to_dict(self._params)
+
         # Initialize M3T tracker
         self._dummy_color_camera = pym3t.DummyColorCamera()
         self._dummy_color_camera.camera2world_pose = np.eye(4)
         if self._params.use_depth:
             self._dummy_depth_camera = pym3t.DummyDepthCamera()
 
-        self._tracker = pym3t.Tracker("tracker", synchronize_cameras=False)
-        self.bodies, self.links, self.object_files = self.create_bodies(
-            self.obj_model_dir, self.accepted_objs, self.cfg.geometry_unit_in_meter
-        )
+        self._tracker = self._initialize_tracker(self._objects_with_valid_paths)
+        if not self.tracker.SetUp():
+            e = RuntimeError("Failed to initialize tracker!")
+            self.get_logger().error(str(e))
+            raise e
+
+        # Iteration counter
+        self._tracker_iter_cnt = 0
+
+        # Image type converter
+        self._cvb = CvBridge()
 
         # Transform buffers
         self._buffer = Buffer()
@@ -175,9 +202,9 @@ class TrackerNodeBase(Node):
             )
             return
 
-        self._dummy_color_camera.intrinsics = self._camera_info_to_intrinsics(
-            depth_info
-        )
+        intrinsics_rgb = camera_info_to_intrinsics(depth_info)
+        encoding = "passthrough" if color_image.encoding == "rgb8" else "rgb8"
+        image_rgb = self._cvb.imgmsg_to_cv2(color_image, encoding)
 
         if depth_image is not None and depth_info is not None:
             if depth_image.header.frame_id != depth_info.header.frame_id:
@@ -201,27 +228,27 @@ class TrackerNodeBase(Node):
             depth_to_color = self._buffer.lookup_transform(
                 depth_image.header.frame_id, color_image.header.frame_id, image_ts
             ).transform
-            # Convert geometry_msgs/Transform into the transformation matrix
-            R = quat2mat(
-                [
-                    depth_to_color.rotation.w,
-                    depth_to_color.rotation.x,
-                    depth_to_color.rotation.y,
-                    depth_to_color.rotation.z,
-                ]
-            )
-            V = np.array(
-                [
-                    depth_to_color.translation.x,
-                    depth_to_color.translation.y,
-                    depth_to_color.translation.z,
-                ]
-            ).reshape((3, 1))
             # Set this pose to be the relative pose between the cameras
-            self._dummy_depth_camera.camera2world_pose = np.dot(R, V)
-            self._dummy_depth_camera.intrinsics = self._camera_info_to_intrinsics(
-                depth_info
-            )
+            transform_depth = transform_msg_to_matrix(depth_to_color)
+            intrinsics_depth = camera_info_to_intrinsics(depth_info)
+
+            # https://ros.org/reps/rep-0118.html
+            # Depth images are published as sensor_msgs/Image encoded as 32-bit float.
+            # Each pixel is a depth (along the camera Z axis) in meters.
+            # ROS 2 topic echo shows, clearly 16UC1, with depth scale 16
+            # ICG expects a CV_16UC1.
+            encoding = "passthrough" if depth_image.encoding == "16UC1" else "16UC1"
+            image_depth = self._cvb.imgmsg_to_cv2(depth_image, encoding)
+        else:
+            transform_depth = None
+            intrinsics_depth = None
+            image_depth = None
+        image_rgb
+        intrinsics_rgb
+
+        intrinsics_depth
+        image_depth
+        transform_depth
 
     @abc.abstractmethod
     def _detection_cb(
@@ -235,65 +262,114 @@ class TrackerNodeBase(Node):
         :type detections: VisionInfo
         """
 
-    def _camera_info_to_intrinsics(self, camera_info: CameraInfo) -> pym3t.Intrinsics:
-        """Converts ROS camera info message into pym3t Intrinsics object.
+    def _initialize_tracker(
+        self, objects_with_valid_paths: Dict[str : Tuple[pathlib.Path]]
+    ) -> pym3t.Tracker:
+        tracker = pym3t.Tracker("tracker", synchronize_cameras=False)
+        skipped_objects = 0
 
-        :param camera_info: ROS message with camera data fields.
-        :type camera_info: sensor_msgs.msg.CameraInfo
-        :return: M3T object holding intrinsics parameters of the camera.
-        :rtype: pym3t.Intrinsics
-        """
-        return pym3t.Intrinsics(
-            fu=camera_info.k[0],
-            fv=camera_info.k[4],
-            ppu=camera_info.k[2],
-            ppv=camera_info.k[5],
-            width=camera_info.width,
-            height=camera_info.height,
-        )
+        # TODO add occlusions and texture support
 
-    def _load_models(self) -> None:
-        # Basic checks on the path are performed in ``custom_validation.py``
-        dataset_path = pathlib.Path(self._params.dataset_path)
-        available_objects = list(dataset_path.glob("*.obj"))
-        valid_object_paths = {}
-        for object_name in self._params.tracked_objects:
-            try:
-                object_file = next(
-                    file_name
-                    for file_name in available_objects
-                    if object_name + ".obj" in file_name.as_posix()
-                )
-                valid_object_paths.update({object_name: object_file})
-                self._load_mesh_model(object_file)
-            except StopIteration:
+        for object_name in objects_with_valid_paths.keys():
+            object_files = objects_with_valid_paths[object_name]
+            use_region_modality = self._params.get_entry(
+                object_name
+            ).use_region_modality
+            use_depth_modality = (
+                self._params.use_depth
+                and self._params.get_entry(object_name).use_depth_modality
+            )
+
+            if not (use_region_modality or use_depth_modality):
+                skipped_objects += 1
                 self.get_logger().warn(
-                    f"No mesh found matching object name '{object}' "
-                    "found. Object creation will be skipped!"
+                    f"Object '{object_name}' has no modality enabled! "
+                    "It will not be used when tracking!"
                 )
                 continue
-        if len(valid_object_paths) == 0:
+
+            body = pym3t.Body(
+                name=object_name,
+                geometry_path=object_files["obj"].as_posix(),
+                geometry_unit_in_meter=self._params.geometry_unit_in_meter,
+                geometry_counterclockwise=True,
+                geometry_enable_culling=True,
+                geometry2body_pose=np.eye(4),
+            )
+            link = pym3t.Link(object_name + "_link", body)
+
+            if use_region_modality:
+                region_model = pym3t.RegionModel(
+                    object_name + "_region_model",
+                    body,
+                    object_files["m3t_rmb"].as_posix(),
+                )
+                region_modality = pym3t.RegionModality(
+                    object_name + "_region_modality",
+                    body,
+                    self._dummy_color_camera,
+                    region_model,
+                )
+                region_modality = update_object_config(
+                    region_modality, self._params_dict[object_name]["region_modality"]
+                )
+                link.AddModality(region_modality)
+
+            if use_depth_modality:
+                depth_model = pym3t.DepthModel(
+                    object_name + "_depth_model",
+                    body,
+                    object_files["m3t_dmb"].as_posix(),
+                )
+                depth_modality = pym3t.DepthModality(
+                    object_name + "_depth_modality",
+                    body,
+                    self._dummy_depth_camera,
+                    depth_model,
+                )
+                depth_modality = update_object_config(
+                    depth_modality, self._params_dict[object_name]["depth_modality"]
+                )
+                link.AddModality(depth_modality)
+
+            optimizer = pym3t.Optimizer(
+                object_name + "_optimizer",
+                link,
+            )
+            optimizer = update_object_config(
+                optimizer, self._params_dict[object_name]["optimizer"]
+            )
+            tracker.AddOptimizer(optimizer)
+
+        if skipped_objects == len(objects_with_valid_paths):
             e = RuntimeError(
-                "None of the provided objects could be found in the "
-                f"folder '{dataset_path.as_posix()}'. Unable to start the node, exiting!"
+                "All of the objects turned out to be invalid during configuration. "
+                "Unable to start the node, exiting!"
             )
             self.get_logger().error(str(e))
             raise e
 
-        # bodies = {
-        #     obj_name: pym3t.Body(
-        #         name=obj_name,
-        #         geometry_path=model_path.as_posix(),
-        #         geometry_unit_in_meter=self._params.geometry_unit_in_meter,
-        #         geometry_counterclockwise=True,
-        #         geometry_enable_culling=True,
-        #         geometry2body_pose=np.eye(4),
-        #     )
-        #     for obj_name, model_path in valid_object_paths.items()
-        # }
+        self.tracker.n_corr_iterations = self._params.tracker.n_corr_iterations
+        self.tracker.n_update_iterations = self._params.tracker.n_update_iterations
 
-        # links = {
-        #     body_name: pym3t.Link(body_name + "_link", body)
-        #     for body_name, body in bodies.items()
-        # }
-        # TODO initialize bodies
+        return tracker
+
+    def _refresh_parameters(self) -> None:
+        """Checks if parameter change occurred and if needed reloads the tracker.
+
+        :raises RuntimeError: Raised when tracker setup failed.
+        """
+        if self._param_listener.is_old(self._params):
+            # Update parameters
+            self._param_listener.refresh_dynamic_parameters()
+            self._params = self._param_listener.get_params()
+
+            # Convert them to a dictionary
+            self._params_dict = params_to_dict(self._params)
+
+            # Reinitialize the tracker
+            self._tracker = self._initialize_tracker(self._objects_with_valid_paths)
+            if not self.tracker.SetUp():
+                e = RuntimeError("Failed to initialize tracker!")
+                self.get_logger().error(str(e))
+                raise e
