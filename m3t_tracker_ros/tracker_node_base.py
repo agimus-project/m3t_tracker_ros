@@ -1,10 +1,8 @@
 import abc
 import numpy as np
 import numpy.typing as npt
-import pathlib
-from typing import Dict, Tuple, Union
+from typing import Union
 
-import pym3t
 
 from rclpy.node import Node
 from rclpy.time import Time
@@ -21,10 +19,8 @@ from vision_msgs.msg import Detection2DArray, VisionInfo
 
 from m3t_tracker_ros.utils import (
     camera_info_to_intrinsics,
-    check_dataset_path,
     params_to_dict,
     transform_msg_to_matrix,
-    update_object_config,
 )
 
 # Automatically generated file
@@ -46,34 +42,6 @@ class TrackerNodeBase(Node):
         except Exception as e:
             self.get_logger().error(str(e))
             raise e
-
-        self._objects_with_valid_paths = check_dataset_path(
-            self._params.dataset_path,
-            self._params.tracked_objects,
-            self._params.use_depth,
-        )
-        if len(self._objects_with_valid_paths != len(self._params.tracked_objects)):
-            diff = set(self._params.tracked_objects) - set(
-                self._objects_with_valid_paths.keys()
-            )
-            self.get_logger().error(f"Filed to load models for objects: {diff}!")
-
-        self._params_dict = params_to_dict(self._params)
-
-        # Initialize M3T tracker
-        self._dummy_color_camera = pym3t.DummyColorCamera()
-        self._dummy_color_camera.camera2world_pose = np.eye(4)
-        if self._params.use_depth:
-            self._dummy_depth_camera = pym3t.DummyDepthCamera()
-
-        self._tracker = self._initialize_tracker(self._objects_with_valid_paths)
-        if not self.tracker.SetUp():
-            e = RuntimeError("Failed to initialize tracker!")
-            self.get_logger().error(str(e))
-            raise e
-
-        # Iteration counter
-        self._tracker_iter_cnt = 0
 
         # Image type converter
         self._cvb = CvBridge()
@@ -261,98 +229,6 @@ class TrackerNodeBase(Node):
         :param detections: Received vision info message.
         :type detections: VisionInfo
         """
-
-    def _initialize_tracker(
-        self, objects_with_valid_paths: Dict[str : Tuple[pathlib.Path]]
-    ) -> pym3t.Tracker:
-        tracker = pym3t.Tracker("tracker", synchronize_cameras=False)
-        skipped_objects = 0
-
-        # TODO add occlusions and texture support
-
-        for object_name in objects_with_valid_paths.keys():
-            object_files = objects_with_valid_paths[object_name]
-            use_region_modality = self._params.get_entry(
-                object_name
-            ).use_region_modality
-            use_depth_modality = (
-                self._params.use_depth
-                and self._params.get_entry(object_name).use_depth_modality
-            )
-
-            if not (use_region_modality or use_depth_modality):
-                skipped_objects += 1
-                self.get_logger().warn(
-                    f"Object '{object_name}' has no modality enabled! "
-                    "It will not be used when tracking!"
-                )
-                continue
-
-            body = pym3t.Body(
-                name=object_name,
-                geometry_path=object_files["obj"].as_posix(),
-                geometry_unit_in_meter=self._params.geometry_unit_in_meter,
-                geometry_counterclockwise=True,
-                geometry_enable_culling=True,
-                geometry2body_pose=np.eye(4),
-            )
-            link = pym3t.Link(object_name + "_link", body)
-
-            if use_region_modality:
-                region_model = pym3t.RegionModel(
-                    object_name + "_region_model",
-                    body,
-                    object_files["m3t_rmb"].as_posix(),
-                )
-                region_modality = pym3t.RegionModality(
-                    object_name + "_region_modality",
-                    body,
-                    self._dummy_color_camera,
-                    region_model,
-                )
-                region_modality = update_object_config(
-                    region_modality, self._params_dict[object_name]["region_modality"]
-                )
-                link.AddModality(region_modality)
-
-            if use_depth_modality:
-                depth_model = pym3t.DepthModel(
-                    object_name + "_depth_model",
-                    body,
-                    object_files["m3t_dmb"].as_posix(),
-                )
-                depth_modality = pym3t.DepthModality(
-                    object_name + "_depth_modality",
-                    body,
-                    self._dummy_depth_camera,
-                    depth_model,
-                )
-                depth_modality = update_object_config(
-                    depth_modality, self._params_dict[object_name]["depth_modality"]
-                )
-                link.AddModality(depth_modality)
-
-            optimizer = pym3t.Optimizer(
-                object_name + "_optimizer",
-                link,
-            )
-            optimizer = update_object_config(
-                optimizer, self._params_dict[object_name]["optimizer"]
-            )
-            tracker.AddOptimizer(optimizer)
-
-        if skipped_objects == len(objects_with_valid_paths):
-            e = RuntimeError(
-                "All of the objects turned out to be invalid during configuration. "
-                "Unable to start the node, exiting!"
-            )
-            self.get_logger().error(str(e))
-            raise e
-
-        self.tracker.n_corr_iterations = self._params.tracker.n_corr_iterations
-        self.tracker.n_update_iterations = self._params.tracker.n_update_iterations
-
-        return tracker
 
     def _refresh_parameters(self) -> None:
         """Checks if parameter change occurred and if needed reloads the tracker.

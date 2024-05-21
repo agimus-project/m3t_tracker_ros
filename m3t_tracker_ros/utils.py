@@ -1,9 +1,8 @@
 import numbers
 import numpy as np
 import numpy.typing as npt
-import pathlib
 from transforms3d.quaternion import quat2mat
-from typing import Annotated, Any, Dict, List, Literal, Tuple, Union
+from typing import Annotated, Any, Literal
 
 import pym3t
 
@@ -51,28 +50,6 @@ def params_to_dict(params: m3t_tracker_ros.Params) -> dict:
     return out
 
 
-def update_object_config(
-    modality: Union[pym3t.RegionModality, pym3t.DepthModality, pym3t.Optimizer],
-    params_dict: dict,
-) -> Union[pym3t.RegionModality, pym3t.DepthModality, pym3t.Optimizer]:
-    """Directly converts code-generated ROS parameters converted into dictionary
-    into modality or optimizer data structure configuration.
-
-    :param modality: Region or Depth modality or Optimizer configuration structure.
-    :type modality: Union[pym3t.RegionModality, pym3t.DepthModality, pym3t.Optimizer]
-    :param params_dict: Dictionary with ROS parameters extracted for a given modality
-        type or optimizer configuration.
-    :type params_dict: dict
-    :return: Update modality config
-    :rtype: Union[pym3t.RegionModality, pym3t.DepthModality, pym3t.Optimizer]
-    """
-    for key, val in params_dict.items():
-        # Check if the bound object has a parameter
-        if hasattr(modality, key):
-            # Set new parameter value
-            setattr(modality, key, val)
-
-
 def camera_info_to_intrinsics(camera_info: CameraInfo) -> pym3t.Intrinsics:
     """Converts ROS camera info message into pym3t Intrinsics object.
 
@@ -117,63 +94,3 @@ def transform_msg_to_matrix(
         ]
     ).reshape((3, 1))
     return np.dot(R, V)
-
-
-def check_dataset_path(
-    dataset_path: pathlib.Path, tracked_objects: List[str], use_depth: bool
-) -> Dict[str : Tuple[pathlib.Path]]:
-    """Assigns paths to files required by tracked objects. hecks if files with
-    extensions ``.obj`` and ``.m3t_rmb`` exists for objects specified with the parameter
-    ``tracked_objects`` exists. If depth is expected objects with extension ``.m3t_dmb``
-    are also checked.
-
-    :param dataset_path: Path to the dataset of objects. With assumption the folder was
-        already pre checked in parameter validation.
-    :type dataset_path: pathlib.Path
-    :param tracked_objects: List of object names to load to track.
-    :type tracked_objects: List[str]
-    :param use_depth: Whether to expect depth data.
-    :type use_depth: bool
-
-    :raises RuntimeError: Failed to math object name with filenames in the directory.
-    :return: Dictionary with following structure:
-        ``tracked_object_name``: {
-            ``obj``: pathlib.Path,
-            ``m3t_rmb``: pathlib.Path,
-            ``m3t_dmb``: Union[None, pathlib.Path],
-        }
-        The value for ``m3t_dmb`` is set to none if ``use_depth`` is equal to False
-    :rtype: Dict[str : Tuple[pathlib.Path]]
-    """
-
-    # Filter only files from the directory
-    files_in_dir = [x for x in dataset_path if x.is_file()]
-    objects_with_valid_paths = {}
-    for object_name in tracked_objects:
-        try:
-            # ``.obj``: 3D mesh file
-            # ``.m3t_rmb``: Precomputed region modality binary file
-            # ``.m3t_dmb``: Precomputed depth modality binary file
-            file_extensions = ["obj", "m3t_rmb"]
-            if use_depth:
-                file_extensions.append("m3t_dmb")
-            # Find all files matching object name and file extension
-            object_files = {
-                extension: next(
-                    file_name
-                    for file_name in files_in_dir
-                    if object_name + "." + extension in file_name.as_posix()
-                )
-                for extension in file_extensions
-            }
-            objects_with_valid_paths.update({object_name: object_files})
-        except StopIteration:
-            continue
-
-    if len(objects_with_valid_paths) == 0:
-        raise RuntimeError(
-            "None of the provided objects could be found in the "
-            f"folder '{dataset_path.as_posix()}'. Unable to start the node, exiting!"
-        )
-
-    return objects_with_valid_paths
