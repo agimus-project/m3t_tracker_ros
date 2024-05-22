@@ -3,7 +3,6 @@ import numpy as np
 import numpy.typing as npt
 from typing import Union
 
-
 from rclpy.node import Node
 from rclpy.time import Time
 
@@ -11,15 +10,17 @@ from cv_bridge import CvBridge
 
 from tf2_ros.buffer import Buffer
 from tf2_ros.transform_listener import TransformListener
+from tf2_geometry_msgs import do_transform_pose
 
 from message_filters import ApproximateTimeSynchronizer, Subscriber
 
+from std_msgs.msg import Header
 from sensor_msgs.msg import CameraInfo, Image
 from vision_msgs.msg import Detection2DArray, VisionInfo
 
+from m3t_tracker_ros.cached_tracker import CachedTracker
 from m3t_tracker_ros.utils import (
     camera_info_to_intrinsics,
-    params_to_dict,
     transform_msg_to_matrix,
 )
 
@@ -42,6 +43,9 @@ class TrackerNodeBase(Node):
         except Exception as e:
             self.get_logger().error(str(e))
             raise e
+
+        # M3T tracker
+        self._tracker = CachedTracker(self._params)
 
         # Image type converter
         self._cvb = CvBridge()
@@ -96,19 +100,19 @@ class TrackerNodeBase(Node):
             VisionInfo, "m3t_tracker/vision_info"
         )
 
-    def _update_poses(
+    @abc.abstractmethod
+    def _image_data_cb(
         self,
-        initial_poses: Detection2DArray,
+        camera_header: Header,
         color_image: npt.NDArray[np.uint8],
         color_camera_k: npt.NDArray[np.float64],
-        depth_image: Union[None, npt.NDArray[np.float64]],
+        depth_image: Union[None, npt.NDArray[np.float16]],
         depth_camera_k: Union[None, npt.NDArray[np.float64]],
+        depth2color_pose: Union[npt.NDArray[np.float32], None],
     ) -> Detection2DArray:
         """Inputs list of detections and update their poses with
         M3T tracker based on subscribed images.
 
-        :param initial_poses: List poses to refine.
-        :type initial_poses: Detection2DArray
         :param color_image: Color image to use when updating.
         :type color_image: Image
         :param color_camera_info:
@@ -120,11 +124,6 @@ class TrackerNodeBase(Node):
         :return: _description_
         :rtype: Detection2DArray
         """
-        initial_poses
-        color_image
-        color_camera_k
-        depth_image
-        depth_camera_k
         pass
 
     def _on_image_data_no_depth_cb(
@@ -174,6 +173,7 @@ class TrackerNodeBase(Node):
         encoding = "passthrough" if color_image.encoding == "rgb8" else "rgb8"
         image_rgb = self._cvb.imgmsg_to_cv2(color_image, encoding)
 
+        image_ts = Time.from_msg(color_image.header.stamp)
         if depth_image is not None and depth_info is not None:
             if depth_image.header.frame_id != depth_info.header.frame_id:
                 self.get_logger().error(
@@ -182,7 +182,6 @@ class TrackerNodeBase(Node):
                 )
                 return
 
-            image_ts = Time.from_msg(color_image.header.stamp)
             if not self._buffer.can_transform(
                 depth_image.header.frame_id, color_image.header.frame_id, image_ts
             ):
@@ -211,15 +210,18 @@ class TrackerNodeBase(Node):
             transform_depth = None
             intrinsics_depth = None
             image_depth = None
-        image_rgb
-        intrinsics_rgb
 
-        intrinsics_depth
-        image_depth
-        transform_depth
+        self._image_data_cb(
+            color_image.header,
+            image_rgb,
+            intrinsics_rgb,
+            image_depth,
+            intrinsics_depth,
+            transform_depth,
+        )
 
     @abc.abstractmethod
-    def _detection_cb(
+    def _detection_data_cb(
         self, detections: Detection2DArray, vision_info: VisionInfo
     ) -> None:
         """Callback triggered every time detection and vision info messages arrive.
@@ -229,6 +231,7 @@ class TrackerNodeBase(Node):
         :param detections: Received vision info message.
         :type detections: VisionInfo
         """
+        pass
 
     def _refresh_parameters(self) -> None:
         """Checks if parameter change occurred and if needed reloads the tracker.
@@ -240,12 +243,38 @@ class TrackerNodeBase(Node):
             self._param_listener.refresh_dynamic_parameters()
             self._params = self._param_listener.get_params()
 
-            # Convert them to a dictionary
-            self._params_dict = params_to_dict(self._params)
-
             # Reinitialize the tracker
-            self._tracker = self._initialize_tracker(self._objects_with_valid_paths)
-            if not self.tracker.SetUp():
-                e = RuntimeError("Failed to initialize tracker!")
-                self.get_logger().error(str(e))
-                raise e
+            self._tracker.update_params(self._params)
+
+    def _transform_detections_to_camera(
+        self,
+        detections: Detection2DArray,
+        camera_header: Header,
+    ) -> Detection2DArray:
+        # If camera frame is used as a stationary frame its
+        # motion will not be taken into account
+        stationary_frame = (
+            self._params.camera_motion_stationary_frame_id
+            if self._params.compensate_camera_motion
+            else camera_header.frame_id
+        )
+
+        camera_stamp = Time.from_msg(camera_header.stamp)
+        for i in len(range(detections)):
+            # Transform poses of the objects to account for a moving camera
+            # Additionally change frame in which those objects are represented
+            detection_header = detections[i].results[0].header
+            self._buffer.lookup_transform_full(
+                stationary_frame,
+                camera_stamp,
+                detection_header.frame_id,
+                Time.from_msg(detection_header.stamp),
+                stationary_frame,
+            )
+            # Update their poses
+            detections[i].results[0].pose.pose = do_transform_pose(
+                detections[i].results[0].results[0].pose.pose
+            )
+            detections[i].header = camera_header
+        detections.header = camera_header
+        return detections

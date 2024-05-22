@@ -1,13 +1,15 @@
 import numbers
 import numpy as np
 import numpy.typing as npt
-from transforms3d.quaternion import quat2mat
-from typing import Annotated, Any, Literal
+import pinocchio as pin
+from typing import Annotated, Any, List, Literal
 
-import pym3t
 
-from sensor_msgs.msg import CameraInfo
-from geometry_msgs.msg import Transform
+from std_msgs.msg import Header
+from geometry_msgs.msg import Pose, Transform, Quaternion, Vector3
+from vision_msgs.msg import Detection2D, Detection2DArray
+
+from m3t_tracker_ros.cached_tracker import TrackedObject
 
 # Automatically generated file
 from m3t_tracker_ros.m3t_tracker_ros_parameters import m3t_tracker_ros  # noqa: E402
@@ -50,24 +52,6 @@ def params_to_dict(params: m3t_tracker_ros.Params) -> dict:
     return out
 
 
-def camera_info_to_intrinsics(camera_info: CameraInfo) -> pym3t.Intrinsics:
-    """Converts ROS camera info message into pym3t Intrinsics object.
-
-    :param camera_info: ROS message with camera data fields.
-    :type camera_info: sensor_msgs.msg.CameraInfo
-    :return: M3T object holding intrinsics parameters of the camera.
-    :rtype: pym3t.Intrinsics
-    """
-    return pym3t.Intrinsics(
-        fu=camera_info.k[0],
-        fv=camera_info.k[4],
-        ppu=camera_info.k[2],
-        ppv=camera_info.k[5],
-        width=camera_info.width,
-        height=camera_info.height,
-    )
-
-
 def transform_msg_to_matrix(
     transform: Transform,
 ) -> Annotated[npt.NDArray[np.float64], Literal[4, 4]]:
@@ -78,19 +62,70 @@ def transform_msg_to_matrix(
     :return: Transformation matrix based on the ROS message.
     :rtype: Annotated[npt.NDArray[np.float64], Literal[4, 4]]
     """
-    R = quat2mat(
-        [
-            transform.rotation.w,
-            transform.rotation.x,
-            transform.rotation.y,
-            transform.rotation.z,
-        ]
+    return pin.XYZQUATToSE3(
+        transform.translation.x,
+        transform.translation.y,
+        transform.translation.z,
+        transform.rotation.x,
+        transform.rotation.y,
+        transform.rotation.z,
+        transform.rotation.w,
+    ).np
+
+
+def pose_msg_to_matrix(
+    pose: Pose,
+) -> Annotated[npt.NDArray[np.float64], Literal[4, 4]]:
+    """Converts ROS Transform message into a 4x4 transformation matrix.
+
+    :param transform: Transform message to convert into the matrix.
+    :type transform: Transform
+    :return: Transformation matrix based on the ROS message.
+    :rtype: Annotated[npt.NDArray[np.float64], Literal[4, 4]]
+    """
+    return pin.XYZQUATToSE3(
+        pose.position.x,
+        pose.position.y,
+        pose.position.z,
+        pose.orientation.x,
+        pose.orientation.y,
+        pose.orientation.z,
+        pose.orientation.w,
+    ).np
+
+
+def get_tracked_objects(
+    detection_array: Detection2DArray, dataset_name: str
+) -> List[TrackedObject]:
+    def get_tracked_object(detection: Detection2D) -> TrackedObject:
+        TrackedObject(
+            id=detection.id,
+            class_id=detection.results[0].hypothesis.class_id.removeprefix(
+                dataset_name + "-"
+            ),
+            body2world_pose=pose_msg_to_matrix(detection.results[0].pose.pose),
+        )
+
+    return [get_tracked_object(detection) for detection in detection_array.detections]
+
+
+def matrix_to_pose(matrix: npt.NDArray[np.float64]) -> Pose:
+    pose_vec = pin.SE3ToXYZQUAT(pin.SE3(matrix))
+    return Pose(
+        position=Vector3(**dict(zip("xyz", pose_vec[:3]))),
+        orientation=Quaternion(**dict(zip("xyzw", pose_vec[3:]))),
     )
-    V = np.array(
-        [
-            transform.translation.x,
-            transform.translation.y,
-            transform.translation.z,
-        ]
-    ).reshape((3, 1))
-    return np.dot(R, V)
+
+
+def update_detection_poses(
+    orig_detection_arr: Detection2DArray,
+    tracked_objects: List[TrackedObject],
+    new_header: Header,
+) -> Detection2DArray:
+    for i in range(len(orig_detection_arr.detections)):
+        orig_detection_arr.detections[i].header = new_header
+        orig_detection_arr.detections[i].results[0].pose.pose = matrix_to_pose(
+            tracked_objects[i].body2world_pose
+        )
+
+    return orig_detection_arr

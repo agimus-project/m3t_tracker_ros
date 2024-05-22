@@ -6,18 +6,30 @@ m3t_tracker_ros:
       not_empty<>: [],
       "custom_validators::check_object_model_path": null
     },
+    read_only: true,
   }
 
   use_depth: {
     type: bool,
     default_value: false,
     description: "Whether to expect depth images to be published.",
+    read_only: true,
+  }
+
+  tracker_cache_timeout: {
+    type: double,
+    default_value: 10.0,
+    description: "Time [seconds] for given object type to be kept in object cache.",
+    validation: {
+      gt<>: 0.0,
+    }
   }
 
   time_sync_slop: {
     type: double,
     default_value: 0.05,
     description: "Delay [seconds] with which incoming messages can be synchronized.",
+    read_only: true,
   }
 
   depth_scale: {
@@ -26,7 +38,8 @@ m3t_tracker_ros:
     description: "@mfoumy plz help.",
     validation: {
       gt<>: 0.0,
-    }
+    },
+    read_only: true,
   }
 
   geometry_unit_in_meter: {
@@ -35,7 +48,23 @@ m3t_tracker_ros:
     description: "@mfoumy plz help.",
     validation: {
       gt<>: 0.0,
-    }
+    },
+    read_only: true,
+  }
+
+  compensate_camera_motion: {
+    type: bool,
+    default_value: false,
+    description: "Whether to recast detection poses to account for camera movement.",
+  }
+
+  camera_motion_stationary_frame_id: {
+    type: string,
+    default_value: "world",
+    description: "Stationary frame id to use as a reference when recasting.",
+    validation: {
+      not_empty<>: [],
+    },
   }
 
   tracker: {
@@ -128,9 +157,13 @@ m3t_tracker_ros:
 
   tracked_objects: {
     type: string_array,
-    default_value: [""],
+    default_value: ["global"],
     description: "IDs of the objects found in the precomputed modalities folder used to track them.",
     read_only: true,
+    validation: {
+      not_empty<>: [],
+      "custom_validators::tracked_objects_have_global": null
+    },
   }
 
   __map_tracked_objects: {
@@ -143,6 +176,24 @@ m3t_tracker_ros:
     use_depth_modality: {
         type: bool,
         default_value: false,
+        description: "@mfoumy plz help.",
+        read_only: true,
+    },
+    use_global_region_modality: {
+        type: bool,
+        default_value: true,
+        description: "@mfoumy plz help.",
+        read_only: true,
+    },
+    use_global_depth_modality: {
+        type: bool,
+        default_value: true,
+        description: "@mfoumy plz help.",
+        read_only: true,
+    },
+    use_global_optimizer: {
+        type: bool,
+        default_value: true,
         description: "@mfoumy plz help.",
         read_only: true,
     },

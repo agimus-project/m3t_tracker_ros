@@ -18,3 +18,9 @@ def check_object_model_path(param: Parameter) -> str:
     if len(list(dataset_path.glob("*.obj"))) == 0:
         return "No files with extension '.obj' found in the provided directory!"
     return
+
+
+def tracked_objects_have_global(param: Parameter) -> str:
+    if "global" not in param.value:
+        return f"No 'global' config in the '{param.name}' parameters!"
+    return ""
