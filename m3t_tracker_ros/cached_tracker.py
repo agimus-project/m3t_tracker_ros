@@ -9,32 +9,56 @@ import pym3t
 
 from m3t_tracker_ros.utils import params_to_dict
 
-# Automatically generated file
-from m3t_tracker_ros.m3t_tracker_ros_parameters import m3t_tracker_ros  # noqa: E402
-
 
 @dataclass
 class TrackedObject:
+    """Structure holding information about currently tracked object.
+    Used to pass objects to the ``CachedTracker`` class."""
+
+    # Unique identifier of an object. Not not known set to empty string
     id: str
+    # Class id of tracked object
     class_id: str
-    body2world_pose: npt.NDArray[np.float32]
+    # Pose relative to camera frame
+    body2camera_pose: npt.NDArray[np.float64]
 
 
 @dataclass
 class KnownObjectConfig:
+    """Structure to hold data about objects with unique identifiers.
+    Used to cache their histograms."""
+
+    # Class id of tracked object to compare if it didn't change
     class_id: str
+    # Time stamp when it was last see
     last_used_stamp: float
+    # Histogram used during last encounter
     histogram: pym3t.ColorHistogram
 
 
 @dataclass
 class OptimizerParams:
+    """Structure to hold parameters of the optimizers.
+    Used for time caching of the pym3t.Optimizer objects."""
+
     class_id: str
     last_used_stamp: float
 
 
 class CachedTracker:
-    def __init__(self, params: m3t_tracker_ros.Params) -> None:
+    """Wrapper on top of pym3t.Tracker class. Adds ability to dynamically add and remove
+    tracked objects with temporal cashing for performance.
+    """
+
+    def __init__(self, params: dict) -> None:
+        """Checks validity of passed configuration of the pym3t.Tracker and initializes it.
+
+        :param params: Dictionary with configuration of the tracker.
+        :type params: dict
+        :raises RuntimeError: Failed to load objects from the given path.
+        :raises RuntimeError: Tracker failed to initialize.
+        """
+        # TODO default to dictionary based option
         self._params = params
         self._classes_with_valid_paths = self._check_dataset_path(
             self._params.dataset_path,
@@ -45,7 +69,7 @@ class CachedTracker:
             diff = set(self._params.tracked_objects) - set(
                 self._classes_with_valid_paths.keys()
             )
-            self.get_logger().error(f"Filed to load models for objects: {diff}!")
+            raise RuntimeError(f"Filed to load models for objects: {diff}!")
 
         self._params_dict = params_to_dict(self._params)
 
@@ -59,17 +83,17 @@ class CachedTracker:
             self._classes_with_valid_paths
         )
         if not self.tracker.SetUp():
-            e = RuntimeError("Failed to initialize tracker!")
-            self.get_logger().error(str(e))
-            raise e
+            raise RuntimeError("Failed to initialize tracker!")
 
         # Iteration counter
         self._tracker_iter_cnt = 0
+
+        # Type counter
+        self._object_type_counter = {id: 0 for id in self._object_cache.keys()}
+
+        # Cache timeouts
         self._histogram_timeout = 5.0
         self._optimizer_lifetime = 5.0
-
-        # Initialize type counter
-        self._object_type_counter = {id: 0 for id in self._object_cache.keys()}
 
         # Cashed objects
         self._last_objects_order = List[TrackedObject]
@@ -85,25 +109,43 @@ class CachedTracker:
 
     def track_image(
         self,
-        image_color: npt.NDArray[np.uint8],
-        k_color: npt.NDArray[np.float32],
-        image_depth: Union[npt.NDArray[np.float16], None],
-        k_depth: Union[npt.NDArray[np.float32], None],
+        color_image: npt.NDArray[np.uint8],
+        color_camera_k: npt.NDArray[np.float32],
+        depth_image: Union[npt.NDArray[np.float16], None],
+        depth_camera_k: Union[npt.NDArray[np.float32], None],
         depth2color_pose: Union[npt.NDArray[np.float32], None],
     ) -> List[TrackedObject]:
+        """Performs tracking step over single set of images.
+
+        :param color_image: OpenCV style RBG8 color image.
+        :type color_image: npt.NDArray[np.uint8]
+        :param color_camera_k: Matrix with intrinsic parameters of the color camera.
+        :type color_camera_k: npt.NDArray[np.float64]
+        :param depth_image: OpenCV style CV_16UC1 depth image. None if not used.
+        :type depth_image: Union[None, npt.NDArray[np.float16]]
+        :param depth_camera_k:  Matrix with intrinsic parameters of the depth camera.
+            None if not used.
+        :type depth_camera_k: Union[None, npt.NDArray[np.float64]]
+        :param depth2color_pose: Pose between depth camera and color camera.
+            None if not used.
+        :type depth2color_pose: Union[None, npt.NDArray[np.float32]]
+        :raises RuntimeError: Passed images are invalid and tracker failed to do next step.
+        :return: List of refined poses, based on internally stored data.
+        :rtype: List[TrackedObject]
+        """
         if not self._tracker.set_up:
             return None
 
-        self._dummy_color_camera.image = image_color
+        self._dummy_color_camera.image = color_image
         self._dummy_color_camera.intrinsics = self._image_data_to_intrinsics(
-            k_color, image_color.shape
+            color_camera_k, color_image.shape
         )
 
-        if image_depth and k_depth and depth2color_pose:
+        if depth_image and depth_camera_k and depth2color_pose:
             self._dummy_depth_camera.camera2world_pose = depth2color_pose
-            self._dummy_depth_camera.image = image_depth
+            self._dummy_depth_camera.image = depth_image
             self._dummy_depth_camera.intrinsics = self._image_data_to_intrinsics(
-                k_depth, image_depth.shape
+                depth_camera_k, depth_image.shape
             )
 
         # 0 is just a dummy value, as it is not used in the C++ code
@@ -124,10 +166,19 @@ class CachedTracker:
         # Update body poses
         for i in range(len(self._last_objects_order)):
             optimizer_name = self._assigned_optimizers_names[i]
-            self._last_objects_order[i].body2world_pose = optimizers[optimizer_name]
+            self._last_objects_order[i].body2camera_pose = optimizers[optimizer_name]
         return self._last_objects_order
 
     def update_tracked_objects(self, objects: List[TrackedObject]) -> None:
+        """Updates internal list of tracked objects. Creates new optimizer if given object
+        type is missing one. Removes optimizers if not sued for long time and manages
+        history of histograms for known objects.
+
+        :param objects: List of the objects to store for tracking.
+        :type objects: List[TrackedObject]
+        :raises RuntimeError: Class id of known object changed.
+        :raises RuntimeError: Reinitialization of the tracker failed.
+        """
         # If nothing to track skip the rest
         self._last_objects_order = objects
         self._do_track_objects = len(objects) != 0
@@ -193,7 +244,7 @@ class CachedTracker:
             modality.SetUp()
             optimizer.root_link.SetUp()
 
-            optimizer.root_link.body[0].body2world_pose = object.body2world_pose
+            optimizer.root_link.body[0].body2world_pose = object.body2camera_pose
             optimizer.SetUp()
 
             self._tracker.AddOptimizer(optimizer)
@@ -218,6 +269,11 @@ class CachedTracker:
         self._first_setup = False
 
     def store_known_object_data(self, objects: List[TrackedObject]) -> None:
+        """Stores histograms of objects with known ids.
+
+        :param objects: List of objects to extract the known ones.
+        :type objects: List[TrackedObject]
+        """
         optimizers = {
             optimizer.name: optimizer for optimizer in self._tracker.optimizer
         }
@@ -234,10 +290,12 @@ class CachedTracker:
     def _image_data_to_intrinsics(
         self, camera_k: npt.NDArray[np.float64], im_shape: Tuple[int]
     ) -> pym3t.Intrinsics:
-        """Converts ROS camera info message into pym3t Intrinsics object.
+        """Converts matrix with camera intrinsics and its shape to pym3t.Intrinsics object.
 
-        :param camera_info: ROS message with camera data fields.
-        :type camera_info: sensor_msgs.msg.CameraInfo
+        :param camera_k: Intrinsics matrix of the camera.
+        :type camera_k: npt.NDArray[np.float64]
+        :param im_shape: Dimensions of the image.
+        :type im_shape: Tuple[int]
         :return: M3T object holding intrinsics parameters of the camera.
         :rtype: pym3t.Intrinsics
         """
@@ -251,14 +309,34 @@ class CachedTracker:
         )
 
     def _clear_type_counter(self) -> None:
+        """Clears values held in the ``self._object_type_counter`` dictionary."""
         self._object_type_counter = {id: 0 for id in self._object_cache.keys()}
 
     def _get_and_bump_type_counter(self, class_id: str) -> str:
+        """Creates unique name for given object type composed of its ``class_id`` and
+        the number of times it was registered inside of the tracker. After name generation
+        counter of its occurrences is increased.
+
+        :param class_id: Name of the class which.
+        :type class_id: str
+        :return: Unique name identifier.
+        :rtype: str
+        """
         name = f"{class_id}_{self._object_type_counter[class_id]}"
         self._object_type_counter[class_id] += 1
         return name
 
-    def _match_class_types(self, class_id: str) -> Tuple[bool]:
+    def _match_class_types(self, class_id: str) -> Tuple[str]:
+        """Checks if given object class is configured to use own parameters for region
+        modality, depth modality and optimizer params, or should load default, ``global``
+        configuration.
+
+        :param class_id: _description_
+        :type class_id: str
+        :return: Tuple with names of classes which parameters should be later loaded.
+            Order: optimizer class, region modality class, depth modality class.
+        :rtype: Tuple[str]
+        """
         class_params = self._params.get_entry(class_id)
         optimizer_class = "global" if class_params.use_global_optimizer else class_id
         rm_class = "global" if class_params.use_global_region_modality else class_id
@@ -266,6 +344,14 @@ class CachedTracker:
         return optimizer_class, rm_class, dm_class
 
     def _get_used_modalities(self, class_id) -> bool:
+        # TODO only depth and texture modalities are optional
+        """Return flags indicating which modalities are expected by the tracker.
+
+        :param class_id: _description_
+        :type class_id: _type_
+        :return: _description_
+        :rtype: bool
+        """
         _, region_modality_class, depth_modality_class = self._match_class_types(
             class_id
         )
@@ -278,7 +364,14 @@ class CachedTracker:
         )
         return use_region_modality, use_depth_modality
 
-    def update_params(self, params: m3t_tracker_ros.Params) -> None:
+    def update_params(self, params: dict) -> None:
+        """Updates internally stored parameters of the node. Loops over all internal
+        optimizers, updates their parameters and reinitialize the tracker.
+
+        :param params: Dictionary with configuration of the tracker.
+        :type params: dict
+        :raises RuntimeError: Failed to update tracker parameters.
+        """
         self._params = params
         self._params_dict = params_to_dict(self._params)
 
@@ -327,6 +420,17 @@ class CachedTracker:
     def _assemble_object_optimizer(
         self, object_name: str, class_id: str
     ) -> pym3t.Optimizer:
+        """Creates new optimizer and sets it up for a given class.
+
+        :param object_name: Name to assign to all the internal objects of the optimizer.
+        :type object_name: str
+        :param class_id: Class of which parameters should be loaded to the optimizer.
+        :type class_id: str
+        # TODO modality stuff
+        :raises RuntimeError: _description_
+        :return: Newly created optimizer object.
+        :rtype: pym3t.Optimizer
+        """
         optimizer_class, region_modality_class, depth_modality_class = (
             self._match_class_types(class_id)
         )
@@ -405,15 +509,15 @@ class CachedTracker:
         modality: Union[pym3t.RegionModality, pym3t.DepthModality, pym3t.Optimizer],
         params_dict: dict,
     ) -> Union[pym3t.RegionModality, pym3t.DepthModality, pym3t.Optimizer]:
-        """Directly converts code-generated ROS parameters converted into dictionary
-        into modality or optimizer data structure configuration.
+        """Directly injects data from code-generated ROS parameters converted to
+        a dictionary into modality or optimizer data structure configuration.
 
         :param modality: Region or Depth modality or Optimizer configuration structure.
         :type modality: Union[pym3t.RegionModality, pym3t.DepthModality, pym3t.Optimizer]
         :param params_dict: Dictionary with ROS parameters extracted for a given modality
             type or optimizer configuration.
         :type params_dict: dict
-        :return: Update modality config
+        :return: Updated modality config.
         :rtype: Union[pym3t.RegionModality, pym3t.DepthModality, pym3t.Optimizer]
         """
         for key, val in params_dict.items():

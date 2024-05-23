@@ -32,6 +32,13 @@ m3t_tracker_ros:
     read_only: true,
   }
 
+  detection_to_image_time_slop: {
+    type: double,
+    default_value: 0.05,
+    description: "Time difference [seconds] between new detection and image for tracker to recover.",
+    read_only: true,
+  }
+
   depth_scale: {
     type: double,
     default_value: 0.001,

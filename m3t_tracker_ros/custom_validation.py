@@ -7,7 +7,7 @@ def check_object_model_path(param: Parameter) -> str:
     exists and has at lest one object with extension ``.obj`` that could be loaded.
 
     :param param: ROS parameter with a string containing path to the object models dataset.
-    :type param: rclpy.Parameter
+    :type param: rclpy.parameter.Parameter
     :return: Error explanation. If empty string, everything is correct.
     :rtype: str
     """
@@ -21,6 +21,13 @@ def check_object_model_path(param: Parameter) -> str:
 
 
 def tracked_objects_have_global(param: Parameter) -> str:
+    """Ensures if the list of names contains ``global`` keyword in it.
+
+    :param param:  ROS parameter with an array of strings of tracked objects names.
+    :type param: rclpy.parameter.Parameter
+    :return: Error explanation. If empty string, everything is correct.
+    :rtype: str
+    """
     if "global" not in param.value:
         return f"No 'global' config in the '{param.name}' parameters!"
     return ""

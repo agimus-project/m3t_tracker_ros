@@ -1,10 +1,10 @@
 import abc
 import numpy as np
 import numpy.typing as npt
-from typing import Union
+from typing import List, Union
 
 from rclpy.node import Node
-from rclpy.time import Time
+from rclpy.time import Time, CONVERSION_CONSTANT
 
 from cv_bridge import CvBridge
 
@@ -21,7 +21,10 @@ from vision_msgs.msg import Detection2DArray, VisionInfo
 from m3t_tracker_ros.cached_tracker import CachedTracker
 from m3t_tracker_ros.utils import (
     camera_info_to_intrinsics,
+    get_tracked_objects,
     transform_msg_to_matrix,
+    update_detection_poses,
+    params_to_dict,
 )
 
 # Automatically generated file
@@ -35,7 +38,11 @@ class TrackerNodeBase(Node):
     __metaclass__ = abc.ABCMeta
 
     def __init__(self, **kwargs) -> None:
-        super().__init__(**kwargs)
+        """Initializes ROS node object, creates synchronized subscribers and publisher.
+
+        :raises Exception: Initialization of the generate_parameter_library object failed.
+        """
+        super().__init__(kwargs)
 
         try:
             self._param_listener = m3t_tracker_ros.ParamListener(self)
@@ -108,30 +115,32 @@ class TrackerNodeBase(Node):
         color_camera_k: npt.NDArray[np.float64],
         depth_image: Union[None, npt.NDArray[np.float16]],
         depth_camera_k: Union[None, npt.NDArray[np.float64]],
-        depth2color_pose: Union[npt.NDArray[np.float32], None],
+        depth2color_pose: Union[None, npt.NDArray[np.float32]],
     ) -> Detection2DArray:
-        """Inputs list of detections and update their poses with
-        M3T tracker based on subscribed images.
+        """Callback triggered when new synchronized set of images arrived.
 
-        :param color_image: Color image to use when updating.
-        :type color_image: Image
-        :param color_camera_info:
-        :type color_camera_info: CameraInfo
-        :param depth_image: _description_
-        :type depth_image: Union[None, Image]
-        :param depth_camera_info: _description_
-        :type depth_camera_info: Union[None, CameraInfo]
-        :return: _description_
-        :rtype: Detection2DArray
+        :param camera_header: Header with color image time stamp and its frame id.
+        :type camera_header: std_msgs.msg.Header
+        :param color_image: OpenCV style RBG8 color image.
+        :type color_image: npt.NDArray[np.uint8]
+        :param color_camera_k: Matrix with intrinsic parameters of the color camera.
+        :type color_camera_k: npt.NDArray[np.float64]
+        :param depth_image: OpenCV style CV_16UC1 depth image. None if not used.
+        :type depth_image: Union[None, npt.NDArray[np.float16]]
+        :param depth_camera_k:  Matrix with intrinsic parameters of the depth camera.
+            None if not used.
+        :type depth_camera_k: Union[None, npt.NDArray[np.float64]]
+        :param depth2color_pose: Pose between depth camera and color camera.
+            None if not used.
+        :type depth2color_pose: Union[None, npt.NDArray[np.float32]]
         """
-        pass
 
     def _on_image_data_no_depth_cb(
         self, color_image: Image, camera_info: CameraInfo
     ) -> None:
-        """Proxy callback function for ``self._on_update`` to use when depth images are
-        not subscribed. Passes the color image and camera info for the color image, while
-        replacing all the depth info with None vales.
+        """Proxy callback function for ``self._on_image_data_cb`` to use when depth
+        images are not subscribed. Passes the color image and camera info for the color
+        image, while replacing all the depth info with None vales.
 
         :param color_image: Received color image.
         :type color_image: sensor_msgs.msg.Image
@@ -149,7 +158,7 @@ class TrackerNodeBase(Node):
     ) -> None:
         """Callback triggered every time batch of synchronized image messages is received.
         Checks correctness of received messages, extracts required data fields and
-        performs frame conversions.
+        performs frame and image type conversions.
 
         :param color_image: Received color image.
         :type color_image: sensor_msgs.msg.Image
@@ -224,57 +233,162 @@ class TrackerNodeBase(Node):
     def _detection_data_cb(
         self, detections: Detection2DArray, vision_info: VisionInfo
     ) -> None:
-        """Callback triggered every time detection and vision info messages arrive.
+        """Callback triggered every time synchronized detection
+        and vision info messages arrive.
 
         :param detections: Received detections array.
-        :type detections: Detection2DArray
+        :type detections: vision_msgs.msg.Detection2DArray
         :param detections: Received vision info message.
-        :type detections: VisionInfo
+        :type detections: vision_msgs.msg.VisionInfo
         """
         pass
 
     def _refresh_parameters(self) -> None:
-        """Checks if parameter change occurred and if needed reloads the tracker.
-
-        :raises RuntimeError: Raised when tracker setup failed.
-        """
+        """Checks if parameter change occurred and if needed reloads the tracker."""
         if self._param_listener.is_old(self._params):
             # Update parameters
             self._param_listener.refresh_dynamic_parameters()
             self._params = self._param_listener.get_params()
 
             # Reinitialize the tracker
-            self._tracker.update_params(self._params)
+            self._tracker.update_params(params_to_dict(self._params))
 
-    def _transform_detections_to_camera(
+    def _perform_tracking_step(
         self,
-        detections: Detection2DArray,
         camera_header: Header,
+        color_image: npt.NDArray[np.uint8],
+        color_camera_k: npt.NDArray[np.float64],
+        depth_image: Union[None, npt.NDArray[np.float16]],
+        depth_camera_k: Union[None, npt.NDArray[np.float64]],
+        depth2color_pose: Union[None, npt.NDArray[np.float32]],
+        tracked_objects: Detection2DArray,
+        update_tracked_objects: bool = False,
     ) -> Detection2DArray:
-        # If camera frame is used as a stationary frame its
-        # motion will not be taken into account
-        stationary_frame = (
-            self._params.camera_motion_stationary_frame_id
-            if self._params.compensate_camera_motion
-            else camera_header.frame_id
+        """Performs tracking step. Performs basic check of correctness of the passed
+        detections. If ``update_tracked_objects`` is set to ``True`` updates poses of the
+        tracked objects inside of the CashedTracker class. If configured, updates poses
+        of the objects with changes in the kinematic model of the robot.
+
+        :param camera_header: Header associated with color camera used to obtain its
+            frame id and timestamp for spatial conversions.
+        :type camera_header: std_msgs.msg.Header
+        :param color_image: OpenCV style RBG8 color image.
+        :type color_image: npt.NDArray[np.uint8]
+        :param color_camera_k: Matrix with intrinsic parameters of the color camera.
+        :type color_camera_k: npt.NDArray[np.float64]
+        :param depth_image: OpenCV style CV_16UC1 depth image. None if not used.
+        :type depth_image: Union[None, npt.NDArray[np.float16]]
+        :param depth_camera_k:  Matrix with intrinsic parameters of the depth camera.
+            None if not used.
+        :type depth_camera_k: Union[None, npt.NDArray[np.float64]]
+        :param depth2color_pose: Pose between depth camera and color camera.
+            None if not used.
+        :type depth2color_pose: Union[None, npt.NDArray[np.float32]]
+        :param tracked_objects: Array of known objects to refine their poses with the tracker.
+        :type tracked_objects: vision_msgs.msg.Detection2DArray
+        :param update_tracked_objects: Flag indicating need to update poses of the
+            tracked objects inside of the tracker class. If ``True`` converts poses
+            of the objects to camera frame before passing them to the tracker,
+            defaults to False.
+        :type update_tracked_objects: bool, optional
+        :raises RuntimeError: Passed objects to track are an empty array.
+        :return: Array of tracked objects with refined poses and updated timestamps.
+        :rtype: Detection2DArray
+        """
+        if len(tracked_objects.detections) == 0:
+            raise RuntimeError("No objects to track")
+
+        if update_tracked_objects:
+            # If camera frame is used as a stationary frame its
+            # motion will not be taken into account
+            stationary_frame = (
+                self._params.camera_motion_stationary_frame_id
+                if self._params.compensate_camera_motion
+                else camera_header.frame_id
+            )
+
+            camera_stamp = Time.from_msg(camera_header.stamp)
+            for i in len(range(tracked_objects)):
+                # Transform poses of the objects to account for a moving camera
+                # Additionally change frame in which those objects are represented
+                detection_header = tracked_objects[i].results[0].header
+                self._buffer.lookup_transform_full(
+                    stationary_frame,
+                    camera_stamp,
+                    detection_header.frame_id,
+                    Time.from_msg(detection_header.stamp),
+                    stationary_frame,
+                )
+                # Update their poses
+                tracked_objects[i].results[0].pose.pose = do_transform_pose(
+                    tracked_objects[i].results[0].results[0].pose.pose
+                )
+            tracked_objects.header.frame_id = camera_header.frame_id
+
+            self._tracker.update_tracked_objects(
+                get_tracked_objects(tracked_objects, self._dataset_name)
+            )
+
+        # Perform tracking step
+        tracking_results = self._tracker.track_image(
+            color_image,
+            color_camera_k,
+            depth_image,
+            depth_camera_k,
+            depth2color_pose,
         )
 
-        camera_stamp = Time.from_msg(camera_header.stamp)
-        for i in len(range(detections)):
-            # Transform poses of the objects to account for a moving camera
-            # Additionally change frame in which those objects are represented
-            detection_header = detections[i].results[0].header
-            self._buffer.lookup_transform_full(
-                stationary_frame,
-                camera_stamp,
-                detection_header.frame_id,
-                Time.from_msg(detection_header.stamp),
-                stationary_frame,
-            )
-            # Update their poses
-            detections[i].results[0].pose.pose = do_transform_pose(
-                detections[i].results[0].results[0].pose.pose
-            )
-            detections[i].header = camera_header
-        detections.header = camera_header
-        return detections
+        return update_detection_poses(tracked_objects, tracking_results, camera_header)
+
+    def _check_image_time_ok(self, **kwargs) -> bool:
+        """Checks timestamps of all detections to see if they are within time window
+        for the tracker to properly recover and track objects.
+
+        :param **kwargs: See ``self._detection_time_delta``.
+        :return: Indication if the tracker will be able to recover and track the objects.
+        :rtype: bool
+        """
+        delta = self._params.detection_to_image_time_slop * CONVERSION_CONSTANT
+        return any(abs(diff) < delta for diff in self._detection_time_delta(**kwargs))
+
+    def _check_image_time_too_old(self, kwargs) -> bool:
+        """Checks timestamps of all detections to see if the image is not too old for
+        the tracker to properly recover and track them.
+
+        :param **kwargs: See ``self._detection_time_delta``.
+        :return: True if image is too old, false if it is ok or newer.
+        :rtype: bool
+        """
+        delta = self._params.detection_to_image_time_slop * CONVERSION_CONSTANT
+        return any(diff > delta for diff in self._detection_time_delta(**kwargs))
+
+    def _check_image_time_too_new(self, kwargs) -> bool:
+        """Checks timestamps of all detections to see if the image is not too new for
+        the tracker to properly recover and track them.
+
+        :param **kwargs: See ``self._detection_time_delta``.
+        :return: True if image is too new, false if it is ok or older.
+        :rtype: bool
+        """
+        delta = self._params.detection_to_image_time_slop * CONVERSION_CONSTANT
+        return any(diff > delta for diff in self._detection_time_delta(kwargs))
+
+    def _detection_time_delta(
+        self, detections: Detection2DArray, image_header: Header
+    ) -> List[int]:
+        """Computes time differences between image time stamp and all
+        detections in the array.
+
+        :param detections: Array of detections to check for timestamp.
+        :type detections: vision_msgs.msg.Detection2DArray
+        :param image_header: Image header used to obtain the timestamp.
+        :type image_header: std_msgs.msg.Header
+        :return: List of time differences [nanoseconds] between detection timestamps
+            and image time stamp.
+        :rtype: List[int]
+        """
+        image_stamp = Time.from_msg(image_header.stamp)
+        return [
+            (Time.from_msg(det.header.stamp) - image_stamp).nanoseconds
+            for det in detections.detections
+        ]

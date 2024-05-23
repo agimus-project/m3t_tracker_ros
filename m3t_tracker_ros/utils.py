@@ -58,7 +58,7 @@ def transform_msg_to_matrix(
     """Converts ROS Transform message into a 4x4 transformation matrix.
 
     :param transform: Transform message to convert into the matrix.
-    :type transform: Transform
+    :type transform: geometry_msgs.msg.Transform
     :return: Transformation matrix based on the ROS message.
     :rtype: Annotated[npt.NDArray[np.float64], Literal[4, 4]]
     """
@@ -78,8 +78,8 @@ def pose_msg_to_matrix(
 ) -> Annotated[npt.NDArray[np.float64], Literal[4, 4]]:
     """Converts ROS Transform message into a 4x4 transformation matrix.
 
-    :param transform: Transform message to convert into the matrix.
-    :type transform: Transform
+    :param pose: Pose message to convert into the matrix.
+    :type pose: geometry_msgs.msg.Pose
     :return: Transformation matrix based on the ROS message.
     :rtype: Annotated[npt.NDArray[np.float64], Literal[4, 4]]
     """
@@ -94,22 +94,33 @@ def pose_msg_to_matrix(
     ).np
 
 
-def get_tracked_objects(
-    detection_array: Detection2DArray, dataset_name: str
-) -> List[TrackedObject]:
+def get_tracked_objects(detections: Detection2DArray) -> List[TrackedObject]:
+    """Converts Detection2DArray message into a list of TrackedObject
+
+    :param detections: ROS message to convert.
+    :type detections: vision_msgs.msg.Detection2DArray
+    :return: List of objects to pass to the cashed tracker.
+    :rtype: List[m3t_tracker_ros.cached_tracker.TrackedObject]
+    """
+
     def get_tracked_object(detection: Detection2D) -> TrackedObject:
         TrackedObject(
             id=detection.id,
-            class_id=detection.results[0].hypothesis.class_id.removeprefix(
-                dataset_name + "-"
-            ),
-            body2world_pose=pose_msg_to_matrix(detection.results[0].pose.pose),
+            class_id=detection.results[0].hypothesis.class_id,
+            body2camera_pose=pose_msg_to_matrix(detection.results[0].pose.pose),
         )
 
-    return [get_tracked_object(detection) for detection in detection_array.detections]
+    return [get_tracked_object(detection) for detection in detections.detections]
 
 
 def matrix_to_pose(matrix: npt.NDArray[np.float64]) -> Pose:
+    """Converts 4x4 transformation matrix into ROS Pose message.
+
+    :param matrix: 4x4 transformation matrix.
+    :type matrix: Annotated[npt.NDArray[np.float64], Literal[4, 4]]
+    :return: Corresponding to the transformation ROS Pose message.
+    :rtype: Pose
+    """
     pose_vec = pin.SE3ToXYZQUAT(pin.SE3(matrix))
     return Pose(
         position=Vector3(**dict(zip("xyz", pose_vec[:3]))),
@@ -122,10 +133,22 @@ def update_detection_poses(
     tracked_objects: List[TrackedObject],
     new_header: Header,
 ) -> Detection2DArray:
+    """Updates Detection2DArray ROS message detections with new, refined poses from
+    TrackedObject list and new header.
+
+    :param orig_detection_arr: Original, input detections array message.
+    :type orig_detection_arr: vision_msgs.msg.Detection2DArray
+    :param tracked_objects: List of refined poses from cashed tracker.
+    :type tracked_objects: List[m3t_tracker_ros.cached_tracker.TrackedObject]
+    :param new_header: New header to emplace in the detections.
+    :type new_header: std_msgs.msg.Header
+    :return: Detection array message with updated fields.
+    :rtype: vision_msgs.msg.Detection2DArray
+    """
     for i in range(len(orig_detection_arr.detections)):
         orig_detection_arr.detections[i].header = new_header
         orig_detection_arr.detections[i].results[0].pose.pose = matrix_to_pose(
-            tracked_objects[i].body2world_pose
+            tracked_objects[i].body2camera_pose
         )
 
     return orig_detection_arr
