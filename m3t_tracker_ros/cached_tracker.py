@@ -7,8 +7,6 @@ from typing import Dict, List, Tuple, Union
 
 import pym3t
 
-from m3t_tracker_ros.utils import params_to_dict
-
 
 @dataclass
 class TrackedObject:
@@ -56,34 +54,48 @@ class CachedTracker:
         :param params: Dictionary with configuration of the tracker.
         :type params: dict
         :raises RuntimeError: Failed to load objects from the given path.
-        :raises RuntimeError: Tracker failed to initialize.
         """
-        # TODO default to dictionary based option
         self._params = params
         self._classes_with_valid_paths = self._check_dataset_path(
-            self._params.dataset_path,
-            self._params.tracked_objects,
-            self._params.use_depth,
+            self._params["dataset_path"],
+            self._params["tracked_objects"],
+            self._params["use_depth"],
         )
-        if len(self._classes_with_valid_paths != len(self._params.tracked_objects)):
-            diff = set(self._params.tracked_objects) - set(
+        if len(self._classes_with_valid_paths != len(self._params["tracked_objects"])):
+            diff = set(self._params["tracked_objects"]) - set(
                 self._classes_with_valid_paths.keys()
             )
             raise RuntimeError(f"Filed to load models for objects: {diff}!")
 
-        self._params_dict = params_to_dict(self._params)
+        # Tracker OpenGL interface
+        self._renderer_geometry = pym3t.RendererGeometry("renderer_geometry")
 
         # Initialize M3T tracker
         self._dummy_color_camera = pym3t.DummyColorCamera()
         self._dummy_color_camera.camera2world_pose = np.eye(4)
-        if self._params.use_depth:
+
+        if self._params["use_depth"]:
             self._dummy_depth_camera = pym3t.DummyDepthCamera()
+            self._focused_depth_depth_renderer = pym3t.FocusedBasicDepthRenderer(
+                f"focused_depth_depth_renderer_{self._dummy_depth_camera.name}",
+                self._renderer_geometry,
+                self._dummy_depth_camera,
+            )
+        else:
+            self._focused_color_depth_renderer = pym3t.FocusedBasicDepthRenderer(
+                f"focused_color_depth_renderer_{self._dummy_color_camera.name}",
+                self._renderer_geometry,
+                self._dummy_color_camera,
+            )
+        self._color_silhouette_renderer = pym3t.FocusedSilhouetteRenderer(
+            "color_silhouette_renderer",
+            self._renderer_geometry,
+            self._dummy_color_camera.name,
+        )
 
         self._object_cache = self._initialize_object_cache(
             self._classes_with_valid_paths
         )
-        if not self.tracker.SetUp():
-            raise RuntimeError("Failed to initialize tracker!")
 
         # Iteration counter
         self._tracker_iter_cnt = 0
@@ -104,8 +116,10 @@ class CachedTracker:
         self._do_track_objects = False
         self._first_setup = True
         self._tracker = pym3t.Tracker("tracker", synchronize_cameras=False)
-        self.tracker.n_corr_iterations = self._params.tracker.n_corr_iterations
-        self.tracker.n_update_iterations = self._params.tracker.n_update_iterations
+        self._tracker.n_corr_iterations = self._params["tracker"]["n_corr_iterations"]
+        self._tracker.n_update_iterations = self._params["tracker"][
+            "n_update_iterations"
+        ]
 
     def track_image(
         self,
@@ -129,12 +143,13 @@ class CachedTracker:
         :param depth2color_pose: Pose between depth camera and color camera.
             None if not used.
         :type depth2color_pose: Union[None, npt.NDArray[np.float32]]
+        :raises RuntimeError: Tracker is not set up.
         :raises RuntimeError: Passed images are invalid and tracker failed to do next step.
         :return: List of refined poses, based on internally stored data.
         :rtype: List[TrackedObject]
         """
         if not self._tracker.set_up:
-            return None
+            return RuntimeError("Tracker was not set up!")
 
         self._dummy_color_camera.image = color_image
         self._dummy_color_camera.intrinsics = self._image_data_to_intrinsics(
@@ -287,6 +302,73 @@ class CachedTracker:
                 )
             ).color_histograms[0]
 
+    def update_params(self, params: dict) -> None:
+        """Updates internally stored parameters of the node. Loops over all internal
+        optimizers, updates their parameters and reinitialize the tracker.
+
+        :param params: Dictionary with configuration of the tracker.
+        :type params: dict
+        :raises RuntimeError: Failed to update tracker parameters.
+        """
+        self._params = params
+        self._tracker.n_corr_iterations = self._params["tracker"]["n_corr_iterations"]
+        self._tracker.n_update_iterations = self._params["tracker"][
+            "n_update_iterations"
+        ]
+
+        optimizers_with_class = [
+            (optimizer, self._registered_optimizers[optimizer.name])
+            for optimizer in self._tracker.optimizer
+            if optimizer.name in self._registered_optimizers.keys()
+        ]
+        for optimizer, class_id in optimizers_with_class:
+            (
+                optimizer_class,
+                region_modality_class,
+                depth_modality_class,
+                texture_modality_class,
+            ) = self._match_class_types(class_id)
+
+            self._tracker.DeleteOptimizer(optimizer.name)
+            optimizer = self._update_object_config(
+                optimizer, self._params[optimizer_class]["optimizer"]
+            )
+
+            for idx, modality in enumerate(optimizer.root_link.modality):
+                if "region_modality" in modality.name:
+                    optimizer.root_link.modality[idx] = self._update_object_config(
+                        optimizer.root_link.modality[idx],
+                        self._params[region_modality_class]["region_modality"],
+                    )
+                if "depth_modality" in modality.name:
+                    optimizer.root_link.modality[idx] = self._update_object_config(
+                        optimizer.root_link.modality[idx],
+                        self._params[depth_modality_class]["depth_modality"],
+                    )
+                if "texture_modality" in modality.name:
+                    optimizer.root_link.modality[idx] = self._update_object_config(
+                        optimizer.root_link.modality[idx],
+                        self._params[texture_modality_class]["texture_modality"],
+                    )
+                    # Parameter ``descriptor_type`` is exposed as string and has to be
+                    # casted to a matching integer
+                    optimizer.root_link.modality[
+                        idx
+                    ].descriptor_type = self._match_texture_descriptor_type(
+                        self._params[texture_modality_class]["texture_modality"][
+                            "descriptor_type_name"
+                        ]
+                    )
+                optimizer.root_link.modality[idx].SetUp()
+
+            optimizer.SetUp()
+            self._tracker.AddOptimizer(optimizer)
+
+        # If any objects were update reinitialize the tracker
+        if len(optimizers_with_class) > 0:
+            if not self._tracker.SetUp(set_up_all_objects=self._first_setup):
+                raise RuntimeError("Failed to reinitialize updated tracker!")
+
     def _image_data_to_intrinsics(
         self, camera_k: npt.NDArray[np.float64], im_shape: Tuple[int]
     ) -> pym3t.Intrinsics:
@@ -328,94 +410,22 @@ class CachedTracker:
 
     def _match_class_types(self, class_id: str) -> Tuple[str]:
         """Checks if given object class is configured to use own parameters for region
-        modality, depth modality and optimizer params, or should load default, ``global``
-        configuration.
+        modality, depth modality, texture modality and optimizer params, or should load
+        default, ``global`` configuration.
 
         :param class_id: _description_
         :type class_id: str
         :return: Tuple with names of classes which parameters should be later loaded.
-            Order: optimizer class, region modality class, depth modality class.
+            Order: optimizer class, region modality class, depth modality class,
+            texture modality class.
         :rtype: Tuple[str]
         """
-        class_params = self._params.get_entry(class_id)
-        optimizer_class = "global" if class_params.use_global_optimizer else class_id
-        rm_class = "global" if class_params.use_global_region_modality else class_id
-        dm_class = "global" if class_params.use_global_depth_modality else class_id
-        return optimizer_class, rm_class, dm_class
-
-    def _get_used_modalities(self, class_id) -> bool:
-        # TODO only depth and texture modalities are optional
-        """Return flags indicating which modalities are expected by the tracker.
-
-        :param class_id: _description_
-        :type class_id: _type_
-        :return: _description_
-        :rtype: bool
-        """
-        _, region_modality_class, depth_modality_class = self._match_class_types(
-            class_id
-        )
-        use_region_modality = self._params.get_entry(
-            region_modality_class
-        ).use_region_modality
-        use_depth_modality = (
-            self._params.use_depth
-            and self._params.get_entry(depth_modality_class).use_depth_modality
-        )
-        return use_region_modality, use_depth_modality
-
-    def update_params(self, params: dict) -> None:
-        """Updates internally stored parameters of the node. Loops over all internal
-        optimizers, updates their parameters and reinitialize the tracker.
-
-        :param params: Dictionary with configuration of the tracker.
-        :type params: dict
-        :raises RuntimeError: Failed to update tracker parameters.
-        """
-        self._params = params
-        self._params_dict = params_to_dict(self._params)
-
-        self.tracker.n_corr_iterations = self._params.tracker.n_corr_iterations
-        self.tracker.n_update_iterations = self._params.tracker.n_update_iterations
-
-        optimizers_with_class = [
-            (optimizer, self._registered_optimizers[optimizer.name])
-            for optimizer in self._tracker.optimizer
-            if optimizer.name in self._registered_optimizers.keys()
-        ]
-        for optimizer, class_id in optimizers_with_class:
-            optimizer_class, region_modality_class, depth_modality_class = (
-                self._match_class_types(class_id)
-            )
-
-            if not any(self._get_used_modalities(class_id)):
-                continue
-
-            self._tracker.DeleteOptimizer(optimizer.name)
-            optimizer = self._update_object_config(
-                optimizer, self._params_dict[optimizer_class]["optimizer"]
-            )
-
-            for idx, modality in enumerate(optimizer.root_link.modality):
-                if "region_modality" in modality.name:
-                    optimizer.root_link.modality[idx] = self._update_object_config(
-                        optimizer.root_link.modality[idx],
-                        self._params_dict[region_modality_class]["region_modality"],
-                    )
-                if "depth_modality" in modality.name:
-                    optimizer.root_link.modality[idx] = self._update_object_config(
-                        optimizer.root_link.modality[idx],
-                        self._params_dict[depth_modality_class]["depth_modality"],
-                    )
-                optimizer.root_link.modality[idx].SetUp()
-
-            optimizer.SetUp()
-            self._tracker.AddOptimizer(optimizer)
-
-        # If any objects were update reinitialize the tracker
-        if len(optimizers_with_class) > 0:
-            if not self._tracker.SetUp(set_up_all_objects=self._first_setup):
-                raise RuntimeError("Failed to reinitialize updated tracker!")
+        class_params = self._params[class_id]
+        optimizer_class = "global" if class_params["use_global_optimizer"] else class_id
+        rm_class = "global" if class_params["use_global_region_modality"] else class_id
+        dm_class = "global" if class_params["use_global_depth_modality"] else class_id
+        tm_class = "global" if class_params["use_global_texture_modality"] else class_id
+        return optimizer_class, rm_class, dm_class, tm_class
 
     def _assemble_object_optimizer(
         self, object_name: str, class_id: str
@@ -426,27 +436,25 @@ class CachedTracker:
         :type object_name: str
         :param class_id: Class of which parameters should be loaded to the optimizer.
         :type class_id: str
-        # TODO modality stuff
-        :raises RuntimeError: _description_
+        :raises ValueError: Region modality expects measuring of the occlusions,
+            but depth is not enabled.
+        :raises ValueError: Texture modality expects measuring of the occlusions,
+            but depth is not enabled.
         :return: Newly created optimizer object.
         :rtype: pym3t.Optimizer
         """
-        optimizer_class, region_modality_class, depth_modality_class = (
-            self._match_class_types(class_id)
-        )
-
-        use_region_modality, use_depth_modality = self._get_used_modalities(class_id)
-        if not (use_region_modality or use_depth_modality):
-            raise RuntimeError(
-                f"Object type '{class_id}' has no modality enabled! "
-                "It will not be used when tracking!"
-            )
+        (
+            optimizer_class,
+            region_modality_class,
+            depth_modality_class,
+            texture_modality_class,
+        ) = self._match_class_types(class_id)
 
         object_files = self._classes_with_valid_paths[class_id]
         body = pym3t.Body(
             name=object_name,
             geometry_path=object_files["obj"].as_posix(),
-            geometry_unit_in_meter=self._params.geometry_unit_in_meter,
+            geometry_unit_in_meter=self._params["body"]["geometry_unit_in_meter"],
             geometry_counterclockwise=True,
             geometry_enable_culling=True,
             geometry2body_pose=np.eye(4),
@@ -454,27 +462,42 @@ class CachedTracker:
         body.SetUp()
         link = pym3t.Link(object_name + "_link", body)
 
-        if use_region_modality:
-            region_model = pym3t.RegionModel(
-                object_name + "_region_model",
-                body,
-                object_files["m3t_rmb"].as_posix(),
-            )
-            region_model.SetUp()
-            region_modality = pym3t.RegionModality(
-                object_name + "_region_modality",
-                body,
-                self._dummy_color_camera,
-                region_model,
-            )
-            region_modality = self._update_object_config(
-                region_modality,
-                self._params_dict[region_modality_class]["region_modality"],
-            )
-            region_modality.SetUp()
-            link.AddModality(region_modality)
+        region_model = pym3t.RegionModel(
+            object_name + "_region_model",
+            body,
+            object_files["m3t_rmb"].as_posix(),
+        )
+        region_model.SetUp()
+        region_modality = pym3t.RegionModality(
+            object_name + "_region_modality",
+            body,
+            self._dummy_color_camera,
+            region_model,
+        )
+        region_modality = self._update_object_config(
+            region_modality,
+            self._params[region_modality_class]["region_modality"],
+        )
 
-        if use_depth_modality:
+        if self._params[region_modality_class]["region_modality"]["measure_occlusions"]:
+            if self._params["use_depth"]:
+                region_modality.MeasureOcclusions(self._dummy_depth_camera)
+            else:
+                raise ValueError(
+                    f"Object '{object_name}' expects to measure occlusions for "
+                    "'region_modality', but param 'use_depth' is set to 'false'!"
+                )
+        if self._params[region_modality_class]["region_modality"]["model_occlusion"]:
+            self._focused_color_depth_renderer.AddReferencedBody(body)
+            region_modality.ModelOcclusions(self._focused_color_depth_renderer)
+
+        region_modality.SetUp()
+        link.AddModality(region_modality)
+
+        if (
+            self._params["use_depth"]
+            and self._params[depth_modality_class]["use_depth_modality"]
+        ):
             depth_model = pym3t.DepthModel(
                 object_name + "_depth_model",
                 body,
@@ -489,36 +512,97 @@ class CachedTracker:
             )
             depth_modality = self._update_object_config(
                 depth_modality,
-                self._params_dict[depth_modality_class]["depth_modality"],
+                self._params[depth_modality_class]["depth_modality"],
             )
+
+            if self._params[depth_modality_class]["depth_modality"][
+                "measure_occlusions"
+            ]:
+                depth_modality.MeasureOcclusions()
+
+            if self._params[depth_modality_class]["depth_modality"]["model_occlusion"]:
+                self._focused_depth_depth_renderer.AddReferencedBody(body)
+                depth_modality.ModelOcclusions(self._focused_depth_depth_renderer)
+
             depth_modality.SetUp()
             link.AddModality(depth_modality)
+
+        if self._params[texture_modality_class]["use_texture_modality"]:
+            self._color_silhouette_renderer.AddReferencedBody(body)
+            texture_modality = pym3t.TextureModality(
+                object_name + "_texture_modality",
+                body,
+                self._dummy_color_camera,
+                self._color_silhouette_renderer,
+            )
+            texture_modality = self._update_object_config(
+                texture_modality,
+                self._params[texture_modality_class]["texture_modality"],
+            )
+            # Parameter ``descriptor_type`` is exposed as string and has to be
+            # casted to a matching integer
+            texture_modality.descriptor_type = self._match_texture_descriptor_type(
+                self._params[texture_modality_class]["texture_modality"][
+                    "descriptor_type_name"
+                ]
+            )
+
+            if self._params[texture_modality_class]["texture_modality"][
+                "measure_occlusions"
+            ]:
+                if self._params["use_depth"]:
+                    texture_modality.MeasureOcclusions(self._dummy_depth_camera)
+                else:
+                    raise ValueError(
+                        f"Object '{object_name}' expects to measure occlusions for "
+                        "'texture_modality', but param 'use_depth' is set to 'false'!"
+                    )
+            if self._params[texture_modality_class]["texture_modality"][
+                "model_occlusion"
+            ]:
+                if not self._focused_color_depth_renderer.IsBodyReferenced(body.name):
+                    self._focused_color_depth_renderer.AddReferencedBody(body)
+                texture_modality.ModelOcclusions(self._focused_color_depth_renderer)
+
+            link.AddModality(texture_modality)
 
         optimizer = pym3t.Optimizer(
             object_name + "_optimizer",
             link,
         )
         optimizer = self._update_object_config(
-            optimizer, self._params_dict[optimizer_class]["optimizer"]
+            optimizer, self._params[optimizer_class]["optimizer"]
         )
 
         return optimizer
 
     def _update_object_config(
         self,
-        modality: Union[pym3t.RegionModality, pym3t.DepthModality, pym3t.Optimizer],
+        modality: Union[
+            pym3t.RegionModality,
+            pym3t.DepthModality,
+            pym3t.TextureModality,
+            pym3t.Optimizer,
+        ],
         params_dict: dict,
-    ) -> Union[pym3t.RegionModality, pym3t.DepthModality, pym3t.Optimizer]:
+    ) -> Union[
+        pym3t.RegionModality,
+        pym3t.DepthModality,
+        pym3t.TextureModality,
+        pym3t.Optimizer,
+    ]:
         """Directly injects data from code-generated ROS parameters converted to
         a dictionary into modality or optimizer data structure configuration.
 
         :param modality: Region or Depth modality or Optimizer configuration structure.
-        :type modality: Union[pym3t.RegionModality, pym3t.DepthModality, pym3t.Optimizer]
+        :type modality: Union[pym3t.RegionModality, pym3t.DepthModality,
+            pym3t.TextureModality, pym3t.Optimizer]
         :param params_dict: Dictionary with ROS parameters extracted for a given modality
             type or optimizer configuration.
         :type params_dict: dict
         :return: Updated modality config.
-        :rtype: Union[pym3t.RegionModality, pym3t.DepthModality, pym3t.Optimizer]
+        :rtype: Union[pym3t.RegionModality, pym3t.DepthModality,
+            pym3t.TextureModality, pym3t.Optimizer]
         """
         for key, val in params_dict.items():
             # Check if the bound object has a parameter
@@ -593,3 +677,15 @@ class CachedTracker:
         self, optimizer: pym3t.Optimizer
     ) -> pym3t.ColorHistogram:
         return optimizer.root_link.modality[0].color_histograms[0]
+
+    def _match_texture_descriptor_type(self, description_type: str) -> int:
+        """Matches string names of descriptors with ones from ``m3t/texture_modality.h`` file.
+
+        :param description_type: Name of the descriptor type of TextureModality class.
+        :type description_type: str
+        :return: Integer representation of the descriptor type.
+        :rtype: int
+        """
+        return {"BRISK": 0, "DAISY": 1, "FREAK": 2, "SIFT": 3, "ORB": 4, "ORB_CUDA": 5}[
+            description_type
+        ]
