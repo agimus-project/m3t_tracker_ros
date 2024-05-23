@@ -139,7 +139,7 @@ class TimeDelayCompensationNode(TrackerNodeBase):
                     im_data.depth_camera_k,
                     im_data.depth2color_pose,
                     tracked_objects,
-                    i == 0 or self._params.compensate_camera_motion,
+                    i == 0,
                 )
             except RuntimeError:
                 pass

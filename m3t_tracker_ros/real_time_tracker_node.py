@@ -71,7 +71,7 @@ class RealTimeTrackerNode(TrackerNodeBase):
                 depth_camera_k,
                 depth2color_pose,
                 self._tracked_objects,
-                self._new_estimates_arrived or self._params.compensate_camera_motion,
+                self._new_estimates_arrived,
             )
             # Store histograms detections with known id
             self._tracker.update_tracked_objects(self._tracked_objects)

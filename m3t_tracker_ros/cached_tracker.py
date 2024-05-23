@@ -31,7 +31,7 @@ class KnownObjectConfig:
     # Time stamp when it was last see
     last_used_stamp: float
     # Histogram used during last encounter
-    histogram: pym3t.ColorHistogram
+    histogram: Union[None, pym3t.ColorHistogram] = None
 
 
 @dataclass
@@ -108,9 +108,14 @@ class CachedTracker:
         self._optimizer_lifetime = 5.0
 
         # Cashed objects
+        # Stores currently tracked object references
         self._last_objects_order = List[TrackedObject]
+        # List with optimizer names in the same order as objects from
+        # ``self._last_objects_order`` to which given optimizer is assigned
         self._assigned_optimizers_names = List[str]
+        # Dict with configurations of objects with known ``id```
         self._known_objects_configs = Dict[str, KnownObjectConfig]
+        # Stores time stamps of optimizers that don't need reinitialization
         self._registered_optimizers = Dict[str, OptimizerParams]
 
         self._do_track_objects = False
@@ -151,6 +156,10 @@ class CachedTracker:
         if not self._tracker.set_up:
             return RuntimeError("Tracker was not set up!")
 
+        # If nothing to track raise an exception
+        if len(self._last_objects_order) == 0:
+            return RuntimeError("Nothing to track!")
+
         self._dummy_color_camera.image = color_image
         self._dummy_color_camera.intrinsics = self._image_data_to_intrinsics(
             color_camera_k, color_image.shape
@@ -184,7 +193,9 @@ class CachedTracker:
             self._last_objects_order[i].body2camera_pose = optimizers[optimizer_name]
         return self._last_objects_order
 
-    def update_tracked_objects(self, objects: List[TrackedObject]) -> None:
+    def update_tracked_objects(
+        self, objects: List[TrackedObject], only_update_poses: bool
+    ) -> None:
         """Updates internal list of tracked objects. Creates new optimizer if given object
         type is missing one. Removes optimizers if not sued for long time and manages
         history of histograms for known objects.
@@ -196,68 +207,83 @@ class CachedTracker:
         """
         # If nothing to track skip the rest
         self._last_objects_order = objects
-        self._do_track_objects = len(objects) != 0
-        if not self._do_track_objects:
+        if len(self._last_objects_order) == 0:
             return
 
         now = time.time()
+        # Clear the counter to reassign labels once again
         self._clear_type_counter()
+        # Reset list with ordered optimizers names
         self._assigned_optimizers_names = [""] * len(self._last_objects_order)
+        # Fetch list of names of the optimizers with their pointers
         optimizer_names = [optimizer.name for optimizer in self._tracker.optimizer]
+
         for i, obj in enumerate(self._last_objects_order):
-            name = self._get_and_bump_type_counter(obj.class_id)
-            obj_optimizer_name = name + "_optimizer"
-            self._assigned_optimizers_names[i] = [obj_optimizer_name]
-            # If optimizer for a given object type was already registered, fetch it
-            if obj_optimizer_name in optimizer_names:
-                optimizer = next(
+            if not only_update_poses:
+                # Generate new "unique" name for a given object
+                name = self._get_and_bump_type_counter(obj.class_id)
+                obj_optimizer_name = name + "_optimizer"
+                # Save name of the optimizer in the same order as the received object
+                self._assigned_optimizers_names[i] = [obj_optimizer_name]
+                # If optimizer for a given object type was already registered, fetch it
+                if obj_optimizer_name in optimizer_names:
+                    optimizer = next(
+                        filter(
+                            lambda optimizer: optimizer.name == obj_optimizer_name,
+                            self._tracker.optimizer,
+                        )
+                    )
+                    # Remove optimizer of a given name from the tracker
+                    self._tracker.DeleteOptimizer(obj_optimizer_name)
+                # If no optimizer was found create a new one
+                else:
+                    optimizer = self._assemble_object_optimizer(name, obj.class_id)
+
+                # Find pointer region modality object to configure its histogram
+                region_modality = next(
                     filter(
-                        lambda optimizer: optimizer.name == obj_optimizer_name,
-                        self._tracker.optimizer,
+                        lambda modality: "_region_model" in modality.name,
+                        optimizer.root_link.modalities,
                     )
                 )
-                self._tracker.DeleteOptimizer(obj_optimizer_name)
-            # If no optimizer was found create a new one
-            else:
-                optimizer = self._assemble_object_optimizer(name, obj.class_id)
+                optimizer.root_link.optimizer.DeleteModality(region_modality.name)
 
-            # Object has its own track
-            if obj.id != "":
-                # If tracked object is seen for the first time initialize it
-                if obj.id not in self._known_objects_configs:
-                    self._known_objects_configs = KnownObjectConfig(
-                        class_id=obj.class_id,
-                        last_used_stamp=now,
-                        histogram=pym3t.ColorHistogram(),
-                    )
-                old_class_id = self._known_objects_configs[object.id].class_id
-                if old_class_id != obj.class_id:
-                    raise RuntimeError(
-                        f"'class_id' of tracked object '{object.id}' "
-                        f"changed from '{obj.class_id}' to '{old_class_id}'!"
-                    )
-                # Histogram is still valid and not too old
-                if (
-                    now - self._known_objects_configs[object.id].last_used_stamp
-                    < self._histogram_timeout
-                ):
+                # Object has its own track
+                if obj.id != "":
+                    # If tracked object is seen for the first time initialize it
+                    if obj.id not in self._known_objects_configs:
+                        obj_cfg = KnownObjectConfig(
+                            class_id=obj.class_id,
+                            last_used_stamp=now,
+                        )
+                        obj_cfg.histogram = self._reload_histogram_params(
+                            obj_cfg, name + "_" + obj.id + "_color_histogram"
+                        )
+                        self._known_objects_configs[obj.id] = obj_cfg
+
+                    assigned_class_id = self._known_objects_configs[object.id].class_id
+                    if assigned_class_id != obj.class_id:
+                        raise RuntimeError(
+                            f"'class_id' of tracked object '{object.id}' "
+                            f"changed from '{obj.class_id}' to '{assigned_class_id}'!"
+                        )
                     histogram = self._known_objects_configs[object.id].histogram
-                self._known_objects_configs[object.id].last_used_stamp = now
-            # Unknown object or histogram is no longer valid
-            else:
-                histogram = pym3t.ColorHistogram()
-            histogram.SetUp()
+                    # Histogram is too old to be considered still valid, reset it
+                    if (
+                        now - self._known_objects_configs[object.id].last_used_stamp
+                        > self._histogram_timeout
+                    ):
+                        # SetUp clears values stored in the histogram
+                        histogram.SetUp()
+                    self._known_objects_configs[object.id].last_used_stamp = now
+                    region_modality.UseSharedColorHistograms(histogram)
+                # Unknown object or histogram is no longer valid
+                else:
+                    region_modality.DoNotUseSharedColorHistograms()
 
-            # Find region modality object and set its histogram
-            modality = next(
-                filter(
-                    lambda modality: "_region_model" in modality.name,
-                    optimizer.root_link.modalities,
-                )
-            )
-            modality.UseSharedColorHistograms(histogram)
-            modality.SetUp()
-            optimizer.root_link.SetUp()
+                region_modality.SetUp()
+                optimizer.root_link.optimizer.AddModality(region_modality)
+                optimizer.root_link.SetUp()
 
             optimizer.root_link.body[0].body2world_pose = object.body2camera_pose
             optimizer.SetUp()
@@ -289,18 +315,20 @@ class CachedTracker:
         :param objects: List of objects to extract the known ones.
         :type objects: List[TrackedObject]
         """
-        optimizers = {
-            optimizer.name: optimizer for optimizer in self._tracker.optimizer
-        }
+        # Filter objects with known ids
         known_objects = [(i, obj) for i, obj in enumerate(objects) if obj.id != ""]
         for i, obj in known_objects:
-            optimizer = optimizers[self._assigned_optimizers_names[i]]
+            # Match optimizers given to the object and extract its name
+            object_name = self._assigned_optimizers_names[i].remove_suffix("_optimizer")
+            # Convert the name to histogram's name
+            hist_name = object_name + "_" + obj.id + "_color_histogram"
+            # Find histogram with the given name
             self._known_objects_configs[obj.id].histogram = next(
                 filter(
-                    lambda modality: "_region_model" in modality.name,
-                    optimizer.root_link.modalities,
+                    lambda histogram: hist_name == histogram.name,
+                    self._tracker.color_histograms,
                 )
-            ).color_histograms[0]
+            )
 
     def update_params(self, params: dict) -> None:
         """Updates internally stored parameters of the node. Loops over all internal
@@ -316,6 +344,7 @@ class CachedTracker:
             "n_update_iterations"
         ]
 
+        # Obtain list of pointers to optimizers with their class ids
         optimizers_with_class = [
             (optimizer, self._registered_optimizers[optimizer.name])
             for optimizer in self._tracker.optimizer
@@ -329,11 +358,14 @@ class CachedTracker:
                 texture_modality_class,
             ) = self._match_class_types(class_id)
 
+            # Decouple optimizer from the tracker
             self._tracker.DeleteOptimizer(optimizer.name)
+            # Update optimizer config
             optimizer = self._update_object_config(
                 optimizer, self._params[optimizer_class]["optimizer"]
             )
 
+            # Iterate over possible modalities
             for idx, modality in enumerate(optimizer.root_link.modality):
                 if "region_modality" in modality.name:
                     optimizer.root_link.modality[idx] = self._update_object_config(
@@ -361,8 +393,16 @@ class CachedTracker:
                     )
                 optimizer.root_link.modality[idx].SetUp()
 
+            # Reinitialize the optimizer and reattach it to the tracker
             optimizer.SetUp()
             self._tracker.AddOptimizer(optimizer)
+
+        # Update known configs
+        for key in self._known_objects_configs.keys():
+            hist = self._known_objects_configs[key].histogram
+            self._known_objects_configs[key].histogram = self._reload_histogram_params(
+                hist
+            )
 
         # If any objects were update reinitialize the tracker
         if len(optimizers_with_class) > 0:
@@ -689,3 +729,47 @@ class CachedTracker:
         return {"BRISK": 0, "DAISY": 1, "FREAK": 2, "SIFT": 3, "ORB": 4, "ORB_CUDA": 5}[
             description_type
         ]
+
+    def _reload_histogram_params(
+        self, obj_config: KnownObjectConfig, hist_name: Union[None, str] = None
+    ) -> pym3t.ColorHistograms:
+        """Return pym3t.ColorHistograms with currently up to date configuration.
+        If passed histogram didn't change, the same histogram is returned. If parameters
+        changed or ``None`` was set to histogram field of ``obj_config``, new histogram
+        is created and set up.
+
+        :param obj_config: Config of known objects.
+        :type obj_config: KnownObjectConfig
+        :param hist_name: If None is passed on ``obj_config.histogram`` this is the
+            name of the new histogram, defaults to None.
+        :type hist_name: Union[None, str], optional
+        :return: Correctly configured histogram.
+        :rtype: pym3t.ColorHistograms
+        """
+        class_id = (
+            "global"
+            if self._params[obj_config.class_id]["use_global_region_modality"]
+            else obj_config.class_id
+        )
+        # Get region modality params
+        rmp = self._params[class_id]["region_modality"]
+        # If old histogram was passed and parameters didn't change
+        if (
+            obj_config.histogram is None
+            or obj_config.histogram.n_bins != rmp["n_bins"]
+            or obj_config.histogram.learning_rate_f != rmp["learning_rate_f"]
+            or obj_config.histogram.learning_rate_b != rmp["learning_rate_b"]
+        ):
+            new_hist = pym3t.ColorHistograms(
+                name=(
+                    obj_config.histogram.name
+                    if obj_config.histogram is not None
+                    else hist_name
+                ),
+                n_bins=rmp["n_bins"],
+                learning_rate_f=rmp["learning_rate_f"],
+                learning_rate_b=rmp["learning_rate_b"],
+            )
+            new_hist.SetUp()
+            return new_hist
+        return obj_config.histogram

@@ -262,7 +262,7 @@ class TrackerNodeBase(Node):
         depth_camera_k: Union[None, npt.NDArray[np.float64]],
         depth2color_pose: Union[None, npt.NDArray[np.float32]],
         tracked_objects: Detection2DArray,
-        update_tracked_objects: bool = False,
+        new_detection: bool = False,
     ) -> Detection2DArray:
         """Performs tracking step. Performs basic check of correctness of the passed
         detections. If ``update_tracked_objects`` is set to ``True`` updates poses of the
@@ -286,11 +286,9 @@ class TrackerNodeBase(Node):
         :type depth2color_pose: Union[None, npt.NDArray[np.float32]]
         :param tracked_objects: Array of known objects to refine their poses with the tracker.
         :type tracked_objects: vision_msgs.msg.Detection2DArray
-        :param update_tracked_objects: Flag indicating need to update poses of the
-            tracked objects inside of the tracker class. If ``True`` converts poses
-            of the objects to camera frame before passing them to the tracker,
-            defaults to False.
-        :type update_tracked_objects: bool, optional
+        :param new_detection: Flag indicating change of tracked objects. Passed to cashed
+            tracker to update its internal structures.
+        :type new_detection: bool, optional
         :raises RuntimeError: Passed objects to track are an empty array.
         :return: Array of tracked objects with refined poses and updated timestamps.
         :rtype: Detection2DArray
@@ -298,7 +296,7 @@ class TrackerNodeBase(Node):
         if len(tracked_objects.detections) == 0:
             raise RuntimeError("No objects to track")
 
-        if update_tracked_objects:
+        if new_detection or self._params.compensate_camera_motion:
             # If camera frame is used as a stationary frame its
             # motion will not be taken into account
             stationary_frame = (
@@ -326,7 +324,7 @@ class TrackerNodeBase(Node):
             tracked_objects.header.frame_id = camera_header.frame_id
 
             self._tracker.update_tracked_objects(
-                get_tracked_objects(tracked_objects, self._dataset_name)
+                get_tracked_objects(tracked_objects, self._dataset_name), new_detection
             )
 
         # Perform tracking step
