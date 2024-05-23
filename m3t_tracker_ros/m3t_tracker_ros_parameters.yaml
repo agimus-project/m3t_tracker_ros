@@ -514,7 +514,7 @@ m3t_tracker_ros:
 
     texture_modality: {
       descriptor_type_name: {
-        type: str,
+        type: string,
         default_value: "ORB",
         description: "@mfoumy plz help.",
         validation: {
