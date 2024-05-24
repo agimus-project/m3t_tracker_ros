@@ -16,6 +16,23 @@ rosdep install -y -i --from-paths src --rosdistro $ROS_DISTRO
 colcon build --symlink-install
 ```
 
+## Launch
+
+This demo tracks given object based on the video input from your webcam.
+
+To launch the demo you need two terminal windows. In the first window run:
+```
+ros2 launch m3t_tracker_examples manual_initialization_demo.launch.py mesh_file:=<global path to mesh file>
+```
+This will start M3T tracker, subscribe to your webcam and open RViz window.
+
+In the second terminal run:
+```
+ros2 run m3t_tracker_examples keyboard_monitor
+```
+This node will await your input from the keyboard. Image preview in RViz will overlay an red version of your tracked object over the video stream. Move the object you want to track to align it with its preview in RViz and press **space bar** to start tracking. The red object will disappear and now, normal version of this object will be show up in the RViz, now tracking it in the space.
+
+
 ## ROS API
 
 ### Publishers
