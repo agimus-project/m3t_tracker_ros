@@ -65,11 +65,17 @@ def parse_script_input() -> argparse.Namespace:
         "--mesh-scale",
         dest="mesh_scale",
         type=float,
-        default=0.0001,
+        default=0.001,
         help="Scale of the input mesh, used to normalize it",
     )
     parser.add_argument(
-        "-d",
+        "--filter-objects",
+        dest="filter_objects",
+        type=str,
+        nargs="+",
+        help="Only convert objects with filtered names. Passed as a list separated with spaces.",
+    )
+    parser.add_argument(
         "--use-depth",
         dest="use_depth",
         action="store_true",
@@ -99,6 +105,11 @@ def process_meshes() -> None:
 
     input_meshes_paths = input_path.glob(f"*.{args.mesh_format}")
     input_meshes_paths = [f for f in input_meshes_paths if f.is_file()]
+
+    if args.filter_objects is not None:
+        input_meshes_paths = [
+            f for f in input_meshes_paths if f.stem in args.filter_objects
+        ]
     if len(input_meshes_paths) == 0:
         raise IOError(
             f"No files of a type '.{args.mesh_format}' found in the source directory!"
@@ -150,7 +161,7 @@ def main() -> None:
         process_meshes()
     except Exception as err:
         print_c(str(err), colors.RED)
-        exit(1)
+        exit(2)
     print_c("All files were successfully converted.", colors.GREEN)
     exit(0)
 

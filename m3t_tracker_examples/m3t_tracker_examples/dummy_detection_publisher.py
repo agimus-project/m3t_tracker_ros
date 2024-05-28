@@ -23,7 +23,7 @@ class DummyDetectionPublisher(Node):
         # Class of the object to track
         self.declare_parameter("class_id", "")
         # Distance from camera sensor
-        self.declare_parameter("distance_from_cam", 0.3)
+        self.declare_parameter("object_distance_from_camera", 0.3)
         # Initial roll, pitch, yaw rotation of the object
         self.declare_parameter("object_rpy", [0.0, 0.0, 0.0])
         # Frame ID of the camera's color sensor
@@ -31,13 +31,15 @@ class DummyDetectionPublisher(Node):
         # Global path to a mesh file to send to RViz
         self.declare_parameter("mesh_file", "")
         # Global path to a mesh file to send to RViz
-        self.declare_parameter("mesh_scale", 0.001)
+        self.declare_parameter("mesh_scale", 1.0)
         # Modified color of the mesh. By default mesh will be red-ish
         self.declare_parameter("mesh_color", [1.0, 0.3, 0.3])
 
         class_id = self.get_parameter("class_id").get_parameter_value().string_value
-        distance_from_cam = (
-            self.get_parameter("distance_from_cam").get_parameter_value().double_value
+        object_distance_from_camera = (
+            self.get_parameter("object_distance_from_camera")
+            .get_parameter_value()
+            .double_value
         )
         object_rpy = (
             self.get_parameter("object_rpy").get_parameter_value().double_array_value
@@ -68,7 +70,7 @@ class DummyDetectionPublisher(Node):
                             ),
                             pose=PoseWithCovariance(
                                 pose=Pose(
-                                    position=Point(z=distance_from_cam),
+                                    position=Point(z=object_distance_from_camera),
                                     orientation=Quaternion(
                                         x=object_quat.x,
                                         y=object_quat.y,

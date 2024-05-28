@@ -1,26 +1,78 @@
+import pathlib
+
 from launch import LaunchDescription
-from launch.actions import DeclareLaunchArgument, OpaqueFunction
+from launch.actions import (
+    DeclareLaunchArgument,
+    ExecuteProcess,
+    OpaqueFunction,
+    RegisterEventHandler,
+)
 from launch.launch_context import LaunchContext
 from launch.launch_description_entity import LaunchDescriptionEntity
-from launch.substitutions import PathJoinSubstitution, LaunchConfiguration
+from launch.substitutions import (
+    FindExecutable,
+    LaunchConfiguration,
+    PathJoinSubstitution,
+)
 from launch_ros.actions import Node
 from launch_ros.substitutions import FindPackageShare
+from launch.event_handlers import OnProcessExit
 
 
 def launch_setup(
     context: LaunchContext, *args, **kwargs
 ) -> list[LaunchDescriptionEntity]:
-    distance_from_cam = LaunchConfiguration("distance_from_cam")
+    object_distance_from_camera = LaunchConfiguration("object_distance_from_camera")
     object_rpy = LaunchConfiguration("object_rpy")
     mesh_file = LaunchConfiguration("mesh_file")
+    mesh_scale = LaunchConfiguration("mesh_scale")
     camera_device = LaunchConfiguration("camera_device")
 
-    rviz_config_path = PathJoinSubstitution(
-        [
-            FindPackageShare("m3t_tracker_examples"),
-            "rviz",
-            "m3t_tracker_example.rviz",
-        ]
+    # Create temporary path for generated objects
+    tmp_data_path = pathlib.Path("/tmp/m3t_tracker_ros_data")
+    tmp_data_path.mkdir(parents=True, mode=0o700, exist_ok=True)
+
+    # Extract path to the input file
+    input_file = pathlib.Path(mesh_file.perform(context)).absolute()
+    input_folder = input_file.parent
+    object_class_id = input_file.stem
+
+    # Script converting input meshes to format used my M3T
+    prepare_sparse_views = ExecuteProcess(
+        cmd=[
+            FindExecutable(name="ros2"),
+            " run m3t_tracker_ros prepare_sparse_views ",
+            "--input-path ",
+            input_folder.as_posix(),
+            " --output-path ",
+            tmp_data_path.as_posix(),
+            " --mesh-format ",
+            input_file.suffix[1:],
+            " --mesh-scale ",
+            mesh_scale,
+            " --filter-objects ",
+            object_class_id,
+        ],
+        name="prepare_sparse_views",
+        output="both",
+        shell=True,
+    )
+
+    # Node initializing pose of the tracked object
+    dummy_detection_publisher = Node(
+        package="m3t_tracker_examples",
+        executable="dummy_detection_publisher",
+        name="dummy_detection_publisher_node",
+        parameters=[
+            {
+                "class_id": object_class_id,
+                "frame_id": "webcam",
+                "object_distance_from_camera": object_distance_from_camera,
+                "object_rpy": object_rpy,
+                # Use converted mesh file
+                "mesh_file": tmp_data_path.as_posix() + "/" + object_class_id + ".obj",
+            }
+        ],
     )
 
     # Start ROS node for image publishing
@@ -36,8 +88,8 @@ def launch_setup(
                 "frame_id": "webcam",
                 "filename": camera_device,
                 # Camera info is ignored by the node on startup.
-                # Waiting for https://github.com/ros-perception/image_pipeline/issues/965
-                "camera_info_url": "package://m3t_tracker_examples/config/camera_info.yaml",
+                # Waiting for https://github.com/ros-perception/image_pipeline/pull/983 to be in upstream
+                # "camera_info_url": "package://m3t_tracker_examples/config/camera_info.yaml",
             }
         ],
         remappings=[
@@ -46,19 +98,12 @@ def launch_setup(
         ],
     )
 
-    # Node initializing pose of the tracked object
-    dummy_detection_publisher = Node(
-        package="m3t_tracker_examples",
-        executable="dummy_detection_publisher",
-        name="dummy_detection_publisher_node",
-        parameters=[
-            {
-                "frame_id": "webcam",
-                "distance_from_cam": distance_from_cam,
-                "object_rpy": object_rpy,
-                "mesh_file": mesh_file,
-            }
-        ],
+    rviz_config_path = PathJoinSubstitution(
+        [
+            FindPackageShare("m3t_tracker_examples"),
+            "rviz",
+            "m3t_tracker_example.rviz",
+        ]
     )
 
     # Start RViz2 ROS node
@@ -91,17 +136,26 @@ def launch_setup(
     )
 
     return [
-        image_publisher_node,
-        dummy_detection_publisher,
-        rviz_node,
-        static_transform_publisher_node,
+        prepare_sparse_views,
+        # Once sparse view exits cleanly start the pipeline
+        RegisterEventHandler(
+            OnProcessExit(
+                target_action=prepare_sparse_views,
+                on_exit=[
+                    dummy_detection_publisher,
+                    image_publisher_node,
+                    rviz_node,
+                    static_transform_publisher_node,
+                ],
+            )
+        ),
     ]
 
 
 def generate_launch_description():
     declared_arguments = [
         DeclareLaunchArgument(
-            "distance_from_cam",
+            "object_distance_from_camera",
             default_value="0.5",
             description="Initial distance from the camera at which object will be expected.",
         ),
@@ -112,7 +166,11 @@ def generate_launch_description():
         ),
         DeclareLaunchArgument(
             "mesh_file",
-            default_value="",
+            description="Path to a file containing the object you want to track.",
+        ),
+        DeclareLaunchArgument(
+            "mesh_scale",
+            default_value="0.001",
             description="Path to a file containing the object you want to track.",
         ),
         DeclareLaunchArgument(

@@ -494,7 +494,7 @@ class CachedTracker:
         body = pym3t.Body(
             name=object_name,
             geometry_path=object_files["obj"].as_posix(),
-            geometry_unit_in_meter=self._params["body"]["geometry_unit_in_meter"],
+            geometry_unit_in_meter=1.0,
             geometry_counterclockwise=True,
             geometry_enable_culling=True,
             geometry2body_pose=np.eye(4),

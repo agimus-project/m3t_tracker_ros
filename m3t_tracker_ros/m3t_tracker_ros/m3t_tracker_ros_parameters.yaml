@@ -74,17 +74,6 @@ m3t_tracker_ros:
     }
   }
 
-  body:
-    geometry_unit_in_meter: {
-      type: double,
-      default_value: 0.001,
-      description: "@mfoumy plz help.",
-      validation: {
-        gt<>: 0.0,
-      },
-      read_only: true,
-    }
-
   tracked_objects: {
     type: string_array,
     default_value: ["global"],
