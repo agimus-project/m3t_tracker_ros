@@ -10,6 +10,9 @@ Currently, there is no automated build for m3t_tracker library itself built into
 :warning: As a prerequirement user has to build the [pym3t](https://github.com/agimus-project/pym3t) from source!
 
 ```bash
+# Optional dependencies used by examples. Awaits ROS Humble sync with new features
+vcs import src < src/m3t_tracker_ros/m3t_tracker_examples/deps.repos
+
 rosdep update --rosdistro $ROS_DISTRO
 rosdep install -y -i --from-paths src --rosdistro $ROS_DISTRO
 # parameter --symlink-install is optional
@@ -25,6 +28,7 @@ To launch the demo you need two terminal windows. In the first window run:
 ros2 launch m3t_tracker_examples manual_initialization_demo.launch.py mesh_file:=<global path to mesh file>
 ```
 This will start M3T tracker, subscribe to your webcam and open RViz window.
+For better accuracy you can modify `camera_fov` parameter of the launch file.
 
 In the second terminal run:
 ```bash

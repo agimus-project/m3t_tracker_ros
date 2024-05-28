@@ -18,7 +18,7 @@ class RealTimeTrackerNode(TrackerNodeBase):
     def __init__(self, **kwargs):
         """Initializes base tracker node and creates
         variables used for real time tracking."""
-        super().__init__(name="m3t_rt_tracker_node", **kwargs)
+        super().__init__(node_name="m3t_rt_tracker_node", **kwargs)
 
         self._last_vision_info = VisionInfo()
         self._tracked_objects = None

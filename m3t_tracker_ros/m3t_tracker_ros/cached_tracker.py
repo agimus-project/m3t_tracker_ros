@@ -31,7 +31,7 @@ class KnownObjectConfig:
     # Time stamp when it was last see
     last_used_stamp: float
     # Histogram used during last encounter
-    histogram: Union[None, pym3t.ColorHistogram] = None
+    histogram: Union[None, pym3t.ColorHistograms] = None
 
 
 @dataclass
@@ -652,7 +652,7 @@ class CachedTracker:
 
     def _check_dataset_path(
         self, dataset_path: pathlib.Path, tracked_objects: List[str], use_depth: bool
-    ) -> Dict[str : Tuple[pathlib.Path]]:
+    ):  # -> Dict[str : Tuple[pathlib.Path]]:
         """Assigns paths to files required by tracked objects. hecks if files with
         extensions ``.obj`` and ``.m3t_rmb`` exists for objects specified with the parameter
         ``tracked_objects`` exists. If depth is expected objects with extension ``.m3t_dmb``
@@ -712,11 +712,6 @@ class CachedTracker:
             )
 
         return objects_with_valid_paths
-
-    def _get_optimizer_color_histogram(
-        self, optimizer: pym3t.Optimizer
-    ) -> pym3t.ColorHistogram:
-        return optimizer.root_link.modality[0].color_histograms[0]
 
     def _match_texture_descriptor_type(self, description_type: str) -> int:
         """Matches string names of descriptors with ones from ``m3t/texture_modality.h`` file.

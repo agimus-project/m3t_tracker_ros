@@ -1,0 +1,4 @@
+/**:
+  ros__parameters:
+    dataset_path: "/tmp/m3t_tracker_ros_data"
+    tracked_objects: ["global"]

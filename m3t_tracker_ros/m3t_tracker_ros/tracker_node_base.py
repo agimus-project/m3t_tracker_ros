@@ -20,7 +20,6 @@ from vision_msgs.msg import Detection2DArray, VisionInfo
 
 from m3t_tracker_ros.cached_tracker import CachedTracker
 from m3t_tracker_ros.utils import (
-    camera_info_to_intrinsics,
     get_tracked_objects,
     transform_msg_to_matrix,
     update_detection_poses,
@@ -42,7 +41,7 @@ class TrackerNodeBase(Node):
 
         :raises Exception: Initialization of the generate_parameter_library object failed.
         """
-        super().__init__(kwargs)
+        super().__init__(**kwargs)
 
         try:
             self._param_listener = m3t_tracker_ros.ParamListener(self)
@@ -178,7 +177,7 @@ class TrackerNodeBase(Node):
             )
             return
 
-        intrinsics_rgb = camera_info_to_intrinsics(depth_info)
+        intrinsics_rgb = depth_info.k
         encoding = "passthrough" if color_image.encoding == "rgb8" else "rgb8"
         image_rgb = self._cvb.imgmsg_to_cv2(color_image, encoding)
 
@@ -206,7 +205,7 @@ class TrackerNodeBase(Node):
             ).transform
             # Set this pose to be the relative pose between the cameras
             transform_depth = transform_msg_to_matrix(depth_to_color)
-            intrinsics_depth = camera_info_to_intrinsics(depth_info)
+            intrinsics_depth = depth_info.k
 
             # https://ros.org/reps/rep-0118.html
             # Depth images are published as sensor_msgs/Image encoded as 32-bit float.

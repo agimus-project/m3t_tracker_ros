@@ -27,6 +27,7 @@ def launch_setup(
     mesh_file = LaunchConfiguration("mesh_file")
     mesh_scale = LaunchConfiguration("mesh_scale")
     camera_device = LaunchConfiguration("camera_device")
+    camera_fov = LaunchConfiguration("camera_fov")
 
     # Create temporary path for generated objects
     tmp_data_path = pathlib.Path("/tmp/m3t_tracker_ros_data")
@@ -75,6 +76,22 @@ def launch_setup(
         ],
     )
 
+    # Start ROS node for M3T tracker
+    m3t_tracker = Node(
+        package="m3t_tracker_ros",
+        executable="real_time_tracker_node",
+        output="screen",
+        # parameters=[
+        #     {
+        #         "use_sim_time": False,
+        #         "publish_rate": 23.0,
+        #         "frame_id": "webcam",
+        #         "filename": camera_device,
+        #         "field_of_view": camera_fov,
+        #     }
+        # ],
+    )
+
     # Start ROS node for image publishing
     image_publisher_node = Node(
         package="image_publisher",
@@ -87,9 +104,7 @@ def launch_setup(
                 "publish_rate": 23.0,
                 "frame_id": "webcam",
                 "filename": camera_device,
-                # Camera info is ignored by the node on startup.
-                # Waiting for https://github.com/ros-perception/image_pipeline/pull/983 to be in upstream
-                # "camera_info_url": "package://m3t_tracker_examples/config/camera_info.yaml",
+                "field_of_view": camera_fov,
             }
         ],
         remappings=[
@@ -146,6 +161,7 @@ def launch_setup(
                     image_publisher_node,
                     rviz_node,
                     static_transform_publisher_node,
+                    m3t_tracker,
                 ],
             )
         ),
@@ -162,7 +178,7 @@ def generate_launch_description():
         DeclareLaunchArgument(
             "object_rpy",
             default_value="[0.0, 0.0, 0.0]",
-            description="Initial rotation of the object.",
+            description="Initial rotation [deg] of the object.",
         ),
         DeclareLaunchArgument(
             "mesh_file",
@@ -177,6 +193,11 @@ def generate_launch_description():
             "camera_device",
             default_value="/dev/video0",
             description="Path to video device used during the demo.",
+        ),
+        DeclareLaunchArgument(
+            "camera_fov",
+            default_value="50.0",
+            description="Field of view [deg] of used camera.",
         ),
     ]
 

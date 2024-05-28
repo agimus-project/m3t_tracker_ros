@@ -1,3 +1,4 @@
+import math
 import quaternion
 
 import rclpy
@@ -51,6 +52,8 @@ class DummyDetectionPublisher(Node):
             self.get_parameter("mesh_color").get_parameter_value().double_array_value
         )
 
+        # Convert degrees to radians
+        object_rpy = [math.radians(r) for r in object_rpy]
         object_quat = quaternion.from_euler_angles(object_rpy)
 
         self._detections_pub = self.create_publisher(

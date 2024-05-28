@@ -16,15 +16,6 @@ m3t_tracker_ros:
     read_only: true,
   }
 
-  tracker_cache_timeout: {
-    type: double,
-    default_value: 10.0,
-    description: "Time [seconds] for given object type to be kept in object cache.",
-    validation: {
-      gt<>: 0.0,
-    }
-  }
-
   time_sync_slop: {
     type: double,
     default_value: 0.05,
@@ -77,7 +68,7 @@ m3t_tracker_ros:
   tracked_objects: {
     type: string_array,
     default_value: ["global"],
-    description: "IDs of the objects found in the precomputed modalities folder used to track them.",
+    description: "Class IDs of the objects found in the precomputed modalities folder used to track them.",
     read_only: true,
     validation: {
       not_empty<>: [],

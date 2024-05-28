@@ -1,0 +1,6 @@
+repositories:
+  image_pipeline:
+    type: git
+    # Awaits PR #985 in the upstream
+    url: https://github.com/ros-perception/image_pipeline
+    version: humble

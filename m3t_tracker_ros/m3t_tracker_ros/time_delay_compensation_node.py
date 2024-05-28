@@ -34,7 +34,7 @@ class TimeDelayCompensationNode(TrackerNodeBase):
     def __init__(self, **kwargs):
         """Initializes base tracker node and creates
         buffer with a counter to store incoming images."""
-        super().__init__(name="m3t_time_delay_tracker_node", **kwargs)
+        super().__init__(node_name="m3t_time_delay_tracker_node", **kwargs)
 
         # Initial queue size
         self._image_buffer = [ImageQueueData()] * 30
