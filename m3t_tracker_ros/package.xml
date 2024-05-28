@@ -22,6 +22,7 @@
   <depend>sensor_msgs</depend>
   <depend>std_msgs</depend>
   <depend>vision_msgs</depend>
+  <depend version_eq="4.4.0">python3-trimesh-pip</depend>
   <depend version_eq="1.26.4">python3-numpy</depend>
 
   <test_depend>python3-pytest</test_depend>

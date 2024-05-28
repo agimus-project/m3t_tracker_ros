@@ -18,6 +18,10 @@ setup(
             "share/ament_index/resource_index/packages",
             ["resource/real_time_tracker_node"],
         ),
+        (
+            "share/ament_index/resource_index/packages",
+            ["resource/prepare_sparse_views"],
+        ),
         ("share/" + package_name, ["package.xml"]),
         # (os.path.join("share", package_name, "test"), glob("test/*.py")),
         # (os.path.join("share", package_name, "test"), glob("test/*.yaml")),
@@ -32,7 +36,8 @@ setup(
     tests_require=["pytest"],
     entry_points={
         "console_scripts": [
-            "real_time_tracker_node = m3t_tracker_ros.real_time_tracker_node:main"
+            "real_time_tracker_node = m3t_tracker_ros.real_time_tracker_node:main",
+            "prepare_sparse_views = scripts.prepare_sparse_views:main",
         ],
     },
 )

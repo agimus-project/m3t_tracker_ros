@@ -21,16 +21,30 @@ colcon build --symlink-install
 This demo tracks given object based on the video input from your webcam.
 
 To launch the demo you need two terminal windows. In the first window run:
-```
+```bash
 ros2 launch m3t_tracker_examples manual_initialization_demo.launch.py mesh_file:=<global path to mesh file>
 ```
 This will start M3T tracker, subscribe to your webcam and open RViz window.
 
 In the second terminal run:
-```
+```bash
 ros2 run m3t_tracker_examples keyboard_monitor
 ```
 This node will await your input from the keyboard. Image preview in RViz will overlay an red version of your tracked object over the video stream. Move the object you want to track to align it with its preview in RViz and press **space bar** to start tracking. The red object will disappear and now, normal version of this object will be show up in the RViz, now tracking it in the space.
+
+## Data Preprocessing
+
+Tracker ROS node expects the meshes to be preprocessed before launch. This is done by converting them to **Wavefront** (**.obj**) file format and creating binary files with sparse views for Region Model (file format **.m3t_rmb**) and optionally Depth Model (file format **.m3t_dmb**).
+
+To preprocess the data you can use following script:
+```bash
+ros2 run m3t_tracker_ros prepare_sparse_views \
+    --input-path <path to folder containing meshes to convert> \
+    --output-path <path to folder where converted meshes will be saved> \
+    --use-depth # optional flag
+```
+To see all options use `ros2 run m3t_tracker_ros prepare_sparse_views --help`.
+Default values of this script match configuration of the meshes used by [HappyPose](https://github.com/agimus-project/happypose).
 
 
 ## ROS API
