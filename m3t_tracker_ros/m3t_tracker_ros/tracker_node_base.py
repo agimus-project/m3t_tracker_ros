@@ -18,7 +18,7 @@ from std_msgs.msg import Header
 from sensor_msgs.msg import CameraInfo, Image
 from vision_msgs.msg import Detection2DArray, VisionInfo
 
-from m3t_tracker_ros.cached_tracker import CachedTracker
+from m3t_tracker_ros.specialized_tracker import SpecializedTracker
 from m3t_tracker_ros.utils import (
     get_tracked_objects,
     transform_msg_to_matrix,
@@ -51,7 +51,11 @@ class TrackerNodeBase(Node):
             raise e
 
         # M3T tracker
-        self._tracker = CachedTracker(self._params)
+        try:
+            self._tracker = SpecializedTracker(params_to_dict(self._params))
+        except Exception as e:
+            self.get_logger().error(str(e))
+            raise e
 
         # Image type converter
         self._cvb = CvBridge()
@@ -96,14 +100,14 @@ class TrackerNodeBase(Node):
             slop=0.01,
         )
         # Register callback depending on the configuration
-        detection_approx_time_sync.registerCallback(self._on_detection_cb)
+        detection_approx_time_sync.registerCallback(self._detection_data_cb)
 
         # Publishers
         self._detection_pub = self.create_publisher(
-            Detection2DArray, "m3t_tracker/detections"
+            Detection2DArray, "m3t_tracker/detections", 10
         )
         self._vision_info_pub = self.create_publisher(
-            VisionInfo, "m3t_tracker/vision_info"
+            VisionInfo, "m3t_tracker/vision_info", 10
         )
 
     @abc.abstractmethod
@@ -146,7 +150,7 @@ class TrackerNodeBase(Node):
         :param camera_info: Received info of the color camera.
         :type camera_info: sensor_msgs.msg.CameraInfo
         """
-        self._on_update_no_depth(color_image, camera_info, None, None)
+        self._on_image_data_cb(color_image, camera_info, None, None)
 
     def _on_image_data_cb(
         self,
@@ -177,7 +181,7 @@ class TrackerNodeBase(Node):
             )
             return
 
-        intrinsics_rgb = depth_info.k
+        intrinsics_rgb = camera_info.k
         encoding = "passthrough" if color_image.encoding == "rgb8" else "rgb8"
         image_rgb = self._cvb.imgmsg_to_cv2(color_image, encoding)
 
@@ -305,11 +309,11 @@ class TrackerNodeBase(Node):
             )
 
             camera_stamp = Time.from_msg(camera_header.stamp)
-            for i in len(range(tracked_objects)):
+            for i in range(len(tracked_objects.detections)):
                 # Transform poses of the objects to account for a moving camera
                 # Additionally change frame in which those objects are represented
-                detection_header = tracked_objects[i].results[0].header
-                self._buffer.lookup_transform_full(
+                detection_header = tracked_objects.detections[i].header
+                transform = self._buffer.lookup_transform_full(
                     stationary_frame,
                     camera_stamp,
                     detection_header.frame_id,
@@ -317,14 +321,12 @@ class TrackerNodeBase(Node):
                     stationary_frame,
                 )
                 # Update their poses
-                tracked_objects[i].results[0].pose.pose = do_transform_pose(
-                    tracked_objects[i].results[0].results[0].pose.pose
+                tracked_objects.detections[i].results[0].pose.pose = do_transform_pose(
+                    tracked_objects.detections[i].results[0].pose.pose, transform
                 )
             tracked_objects.header.frame_id = camera_header.frame_id
 
-            self._tracker.update_tracked_objects(
-                get_tracked_objects(tracked_objects, self._dataset_name), new_detection
-            )
+            self._tracker.update_tracked_objects(get_tracked_objects(tracked_objects))
 
         # Perform tracking step
         tracking_results = self._tracker.track_image(
@@ -337,7 +339,7 @@ class TrackerNodeBase(Node):
 
         return update_detection_poses(tracked_objects, tracking_results, camera_header)
 
-    def _check_image_time_ok(self, **kwargs) -> bool:
+    def _check_image_time_ok(self, *args) -> bool:
         """Checks timestamps of all detections to see if they are within time window
         for the tracker to properly recover and track objects.
 
@@ -346,9 +348,9 @@ class TrackerNodeBase(Node):
         :rtype: bool
         """
         delta = self._params.detection_to_image_time_slop * CONVERSION_CONSTANT
-        return any(abs(diff) < delta for diff in self._detection_time_delta(**kwargs))
+        return any(abs(diff) < delta for diff in self._detection_time_delta(*args))
 
-    def _check_image_time_too_old(self, kwargs) -> bool:
+    def _check_image_time_too_old(self, *args) -> bool:
         """Checks timestamps of all detections to see if the image is not too old for
         the tracker to properly recover and track them.
 
@@ -357,7 +359,7 @@ class TrackerNodeBase(Node):
         :rtype: bool
         """
         delta = self._params.detection_to_image_time_slop * CONVERSION_CONSTANT
-        return any(diff > delta for diff in self._detection_time_delta(**kwargs))
+        return any(diff > delta for diff in self._detection_time_delta(*args))
 
     def _check_image_time_too_new(self, kwargs) -> bool:
         """Checks timestamps of all detections to see if the image is not too new for

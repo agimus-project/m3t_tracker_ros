@@ -6,10 +6,10 @@ from typing import Annotated, Any, List, Literal
 
 
 from std_msgs.msg import Header
-from geometry_msgs.msg import Pose, Transform, Quaternion, Vector3
+from geometry_msgs.msg import Pose, Point, Transform, Quaternion
 from vision_msgs.msg import Detection2D, Detection2DArray
 
-from m3t_tracker_ros.cached_tracker import TrackedObject
+from m3t_tracker_ros.specialized_tracker import TrackedObject
 
 # Automatically generated file
 from m3t_tracker_ros.m3t_tracker_ros_parameters import m3t_tracker_ros  # noqa: E402
@@ -63,13 +63,17 @@ def transform_msg_to_matrix(
     :rtype: Annotated[npt.NDArray[np.float64], Literal[4, 4]]
     """
     return pin.XYZQUATToSE3(
-        transform.translation.x,
-        transform.translation.y,
-        transform.translation.z,
-        transform.rotation.x,
-        transform.rotation.y,
-        transform.rotation.z,
-        transform.rotation.w,
+        np.array(
+            [
+                transform.translation.x,
+                transform.translation.y,
+                transform.translation.z,
+                transform.rotation.x,
+                transform.rotation.y,
+                transform.rotation.z,
+                transform.rotation.w,
+            ]
+        )
     ).np
 
 
@@ -84,13 +88,17 @@ def pose_msg_to_matrix(
     :rtype: Annotated[npt.NDArray[np.float64], Literal[4, 4]]
     """
     return pin.XYZQUATToSE3(
-        pose.position.x,
-        pose.position.y,
-        pose.position.z,
-        pose.orientation.x,
-        pose.orientation.y,
-        pose.orientation.z,
-        pose.orientation.w,
+        np.array(
+            [
+                pose.position.x,
+                pose.position.y,
+                pose.position.z,
+                pose.orientation.x,
+                pose.orientation.y,
+                pose.orientation.z,
+                pose.orientation.w,
+            ]
+        )
     ).np
 
 
@@ -104,7 +112,7 @@ def get_tracked_objects(detections: Detection2DArray) -> List[TrackedObject]:
     """
 
     def get_tracked_object(detection: Detection2D) -> TrackedObject:
-        TrackedObject(
+        return TrackedObject(
             id=detection.id,
             class_id=detection.results[0].hypothesis.class_id,
             body2camera_pose=pose_msg_to_matrix(detection.results[0].pose.pose),
@@ -123,7 +131,7 @@ def matrix_to_pose(matrix: npt.NDArray[np.float64]) -> Pose:
     """
     pose_vec = pin.SE3ToXYZQUAT(pin.SE3(matrix))
     return Pose(
-        position=Vector3(**dict(zip("xyz", pose_vec[:3]))),
+        position=Point(**dict(zip("xyz", pose_vec[:3]))),
         orientation=Quaternion(**dict(zip("xyzw", pose_vec[3:]))),
     )
 

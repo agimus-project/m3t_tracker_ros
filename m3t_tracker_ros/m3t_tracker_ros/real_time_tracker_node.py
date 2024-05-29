@@ -24,6 +24,8 @@ class RealTimeTrackerNode(TrackerNodeBase):
         self._tracked_objects = None
         self._new_estimates_arrived = False
 
+        self.get_logger().info("Node started.")
+
     def _image_data_cb(
         self,
         camera_header: Header,
@@ -56,6 +58,8 @@ class RealTimeTrackerNode(TrackerNodeBase):
             return
 
         if not self._check_image_time_ok(self._tracked_objects, camera_header):
+            # Reset tracked objects to prevent the log from showing all the time
+            self._tracked_objects = None
             self.get_logger().warn(
                 "Time difference between detections and the incoming "
                 "image is to big for it to recover!"
@@ -73,8 +77,6 @@ class RealTimeTrackerNode(TrackerNodeBase):
                 self._tracked_objects,
                 self._new_estimates_arrived,
             )
-            # Store histograms detections with known id
-            self._tracker.update_tracked_objects(self._tracked_objects)
         except RuntimeError:
             pass
         self._new_estimates_arrived = False
@@ -91,7 +93,7 @@ class RealTimeTrackerNode(TrackerNodeBase):
         self._last_vision_info.method += "-M3T-rt-refined"
 
         self._detection_pub.publish(self._tracked_objects)
-        self._vision_info_pub(self._last_vision_info)
+        self._vision_info_pub.publish(self._last_vision_info)
 
     def _detection_data_cb(
         self, detections: Detection2DArray, vision_info: VisionInfo

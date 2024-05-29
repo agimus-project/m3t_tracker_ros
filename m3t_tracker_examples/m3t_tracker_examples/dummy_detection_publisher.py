@@ -64,7 +64,7 @@ class DummyDetectionPublisher(Node):
             detections=[
                 Detection2D(
                     header=Header(frame_id=frame_id),
-                    id="0",
+                    id=class_id + "_0",
                     results=[
                         ObjectHypothesisWithPose(
                             hypothesis=ObjectHypothesis(
@@ -135,6 +135,7 @@ class DummyDetectionPublisher(Node):
         self._marker_pub_timer.destroy()
         now = self.get_clock().now().to_msg()
         self._detection_msg.header.stamp = now
+        self._detection_msg.detections[0].header.stamp = now
         self._vision_info_msg.header.stamp = now
         self._detections_pub.publish(self._detection_msg)
         self._vision_info_pub.publish(self._vision_info_msg)

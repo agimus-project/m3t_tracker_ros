@@ -81,15 +81,12 @@ def launch_setup(
         package="m3t_tracker_ros",
         executable="real_time_tracker_node",
         output="screen",
-        # parameters=[
-        #     {
-        #         "use_sim_time": False,
-        #         "publish_rate": 23.0,
-        #         "frame_id": "webcam",
-        #         "filename": camera_device,
-        #         "field_of_view": camera_fov,
-        #     }
-        # ],
+        parameters=[
+            {
+                "dataset_path": tmp_data_path.as_posix(),
+                "tracked_objects": ["global", object_class_id],
+            }
+        ],
     )
 
     # Start ROS node for image publishing
@@ -106,10 +103,6 @@ def launch_setup(
                 "filename": camera_device,
                 "field_of_view": camera_fov,
             }
-        ],
-        remappings=[
-            # Remapped topics have to match the names from
-            ("image_raw", "image"),
         ],
     )
 
@@ -151,6 +144,7 @@ def launch_setup(
     )
 
     return [
+        # m3t_tracker
         prepare_sparse_views,
         # Once sparse view exits cleanly start the pipeline
         RegisterEventHandler(

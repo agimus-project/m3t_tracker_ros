@@ -25,7 +25,7 @@ class ImageQueueData:
     depth2color_pose: Union[None, npt.NDArray[np.float32]]
 
 
-class TimeDelayCompensationNode(TrackerNodeBase):
+class TimeCatchupNode(TrackerNodeBase):
     """Specialized M3T tracker ROS node class for time compensation for slow 6D pose
     estimation pipelines with pose refinement. Stores incoming camera images waiting for
     new detections to be refined.
@@ -34,7 +34,7 @@ class TimeDelayCompensationNode(TrackerNodeBase):
     def __init__(self, **kwargs):
         """Initializes base tracker node and creates
         buffer with a counter to store incoming images."""
-        super().__init__(node_name="m3t_time_delay_tracker_node", **kwargs)
+        super().__init__(node_name="m3t_time_catchup_node", **kwargs)
 
         # Initial queue size
         self._image_buffer = [ImageQueueData()] * 30
@@ -151,9 +151,6 @@ class TimeDelayCompensationNode(TrackerNodeBase):
             )
             return
 
-        # Store histograms detections with known id
-        self._tracker.update_tracked_objects(self._tracked_objects)
-
         # Reset the buffer counter
         self._buffer_cnt = 0
 
@@ -177,12 +174,12 @@ class TimeDelayCompensationNode(TrackerNodeBase):
 def main() -> None:
     """Creates the ROS node object and spins it."""
     rclpy.init()
-    time_delay_compensation_node = TimeDelayCompensationNode()
+    time_catchup_node = TimeCatchupNode()
     try:
-        rclpy.spin(time_delay_compensation_node)
+        rclpy.spin(time_catchup_node)
     except KeyboardInterrupt:
         pass
-    time_delay_compensation_node.destroy_node()
+    time_catchup_node.destroy_node()
     rclpy.try_shutdown()
 
 
