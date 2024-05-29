@@ -20,6 +20,10 @@ setup(
         ),
         (
             "share/ament_index/resource_index/packages",
+            ["resource/time_delay_compensation_node"],
+        ),
+        (
+            "share/ament_index/resource_index/packages",
             ["resource/prepare_sparse_views"],
         ),
         ("share/" + package_name, ["package.xml"]),
@@ -37,7 +41,8 @@ setup(
     entry_points={
         "console_scripts": [
             "real_time_tracker_node = m3t_tracker_ros.real_time_tracker_node:main",
-            "prepare_sparse_views = scripts.prepare_sparse_views:main",
+            "time_delay_compensation_node = m3t_tracker_ros.time_delay_compensation_node:main",
+            "prepare_sparse_views = m3t_tracker_ros.prepare_sparse_views:main",
         ],
     },
 )
