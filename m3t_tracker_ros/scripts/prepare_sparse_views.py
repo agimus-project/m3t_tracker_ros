@@ -69,17 +69,18 @@ def parse_script_input() -> argparse.Namespace:
         help="Scale of the input mesh, used to normalize it",
     )
     parser.add_argument(
+        "-d",
+        "--use-depth",
+        dest="use_depth",
+        action="store_true",
+        help="Whether to generate depth model of the objects.",
+    )
+    parser.add_argument(
         "--filter-objects",
         dest="filter_objects",
         type=str,
         nargs="+",
         help="Only convert objects with filtered names. Passed as a list separated with spaces.",
-    )
-    parser.add_argument(
-        "--use-depth",
-        dest="use_depth",
-        action="store_true",
-        help="Whether to generate depth model of the objects.",
     )
 
     return parser.parse_args()
