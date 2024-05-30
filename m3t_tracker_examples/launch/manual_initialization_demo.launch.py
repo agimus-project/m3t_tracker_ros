@@ -97,12 +97,33 @@ def launch_setup(
         output="screen",
         parameters=[
             {
-                "use_sim_time": False,
                 "publish_rate": 23.0,
                 "frame_id": "webcam",
                 "filename": camera_device,
                 "field_of_view": camera_fov,
             }
+        ],
+    )
+
+    # Start mesh publisher
+    happypose_marker_publisher = Node(
+        package="happypose_marker_publisher",
+        executable="marker_publisher",
+        output="screen",
+        parameters=[
+            {
+                "filename_format": "${class_id}.obj",
+                "marker_lifetime": 1.0 / 23.0 + 0.01,
+                "mesh.use_vision_info_uri": False,
+                "mesh.uri": "file://" + tmp_data_path.as_posix(),
+                "mesh.scale": 1.0,
+                "mesh.color_overwrite": [0.5, 1.0, 0.5, 1.0],
+            }
+        ],
+        remappings=[
+            ("/reference/detections", "/m3t_tracker/detections"),
+            ("/reference/vision_info", "/m3t_tracker/vision_info"),
+            ("/marker_publisher_node/markers", "/m3t_tracker/markers"),
         ],
     )
 
@@ -156,6 +177,7 @@ def launch_setup(
                     rviz_node,
                     static_transform_publisher_node,
                     m3t_tracker,
+                    happypose_marker_publisher,
                 ],
             )
         ),
