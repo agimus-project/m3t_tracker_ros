@@ -77,8 +77,9 @@ class RealTimeTrackerNode(TrackerNodeBase):
                 self._tracked_objects,
                 self._new_estimates_arrived,
             )
-        except RuntimeError:
-            pass
+        except RuntimeError as err:
+            self.get_logger().warn(str(err))
+            return
         self._new_estimates_arrived = False
 
         header = Header(
