@@ -224,11 +224,10 @@ class SpecializedTracker:
 
             optimizer = self._known_objects[track.id]
             optimizer.root_link.body.body2world_pose = track.body2camera_pose
-            # optimizer.SetUp()
+            optimizer.SetUp()
             self._tracker.AddOptimizer(optimizer)
 
-        # if not self._tracker.SetUp(set_up_all_objects=self._first_setup):
-        if not self._tracker.SetUp(set_up_all_objects=False):
+        if not self._tracker.SetUp(set_up_all_objects=self._first_setup):
             raise RuntimeError(
                 "Failed to " "initialize"
                 if self._first_setup
@@ -266,12 +265,13 @@ class SpecializedTracker:
                             mod_params,
                         )
                         if modality_type == "texture_modality":
-                            # Parameter ``descriptor_type`` is exposed as string and has to be
-                            # casted to a matching integer
-                            optimizer.root_link.modality[
-                                idx
-                            ].descriptor_type = self._match_texture_descriptor_type(
-                                mod_params["descriptor_type_name"]
+                            # Parameter ``descriptor_type`` is exposed as string
+                            # and has to be TextureModality::DescriptorType enum
+                            optimizer.root_link.modality[idx].descriptor_type = getattr(
+                                pym3t.DescriptorType,
+                                self._params["texture_modality"][
+                                    "descriptor_type_name"
+                                ],
                             )
                         optimizer.root_link.modality[idx].SetUp()
                         continue
@@ -430,10 +430,11 @@ class SpecializedTracker:
                 texture_modality,
                 self._params["texture_modality"],
             )
-            # Parameter ``descriptor_type`` is exposed as string and has to be
-            # casted to a matching integer
-            texture_modality.descriptor_type = self._match_texture_descriptor_type(
-                self._params["texture_modality"]["descriptor_type_name"]
+            # Parameter ``descriptor_type`` is exposed as string
+            # and has to be TextureModality::DescriptorType enum
+            texture_modality.descriptor_type = getattr(
+                pym3t.DescriptorType,
+                self._params["texture_modality"]["descriptor_type_name"],
             )
 
             if self._params["texture_modality"]["measure_occlusions"]:
@@ -449,6 +450,7 @@ class SpecializedTracker:
                     self._focused_color_depth_renderer.AddReferencedBody(body)
                 texture_modality.ModelOcclusions(self._focused_color_depth_renderer)
 
+            texture_modality.SetUp()
             link.AddModality(texture_modality)
 
         link.SetUp()
@@ -560,15 +562,3 @@ class SpecializedTracker:
             )
 
         return objects_with_valid_paths
-
-    def _match_texture_descriptor_type(self, description_type: str) -> int:
-        """Matches string names of descriptors with ones from ``m3t/texture_modality.h`` file.
-
-        :param description_type: Name of the descriptor type of TextureModality class.
-        :type description_type: str
-        :return: Integer representation of the descriptor type.
-        :rtype: int
-        """
-        return {"BRISK": 0, "DAISY": 1, "FREAK": 2, "SIFT": 3, "ORB": 4, "ORB_CUDA": 5}[
-            description_type
-        ]

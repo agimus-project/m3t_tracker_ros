@@ -121,15 +121,6 @@ m3t_tracker_ros:
       default_value: false,
       description: "@mfoumy plz help.",
     },
-    max_radius_depth_offset: {
-      type: double,
-      default_value: 0.0,
-      description: "@mfoumy plz help.",
-      validation: {
-        # @mfoumy should it be 0.0?
-        gt_eq<>: 0.0,
-      }
-    },
     min_continuous_distance: {
       type: double,
       default_value: 3.0,
@@ -300,12 +291,6 @@ m3t_tracker_ros:
         gt<>: 0.0,
       }
     },
-    model_occlusions: {
-      type: bool,
-      default_value: false,
-      description: "@mfoumy plz help.",
-      read_only: True,
-    },
     modeled_depth_offset_radius: {
       type: double,
       default_value: 0.01,
@@ -388,12 +373,6 @@ m3t_tracker_ros:
         not_empty<>: [],
       }
     },
-    model_occlusion: {
-      type: bool,
-      default_value: false,
-      description: "Enables occlusion modeling for depth modality.",
-      read_only: True,
-    },
     n_unoccluded_iterations: {
       type: int,
       default_value: 10,
@@ -441,7 +420,7 @@ m3t_tracker_ros:
         gt<>: 0.0,
       }
     },
-    model_occlusions: {
+    model_occlusion: {
       type: bool,
       default_value: false,
       description: "@mfoumy plz help.",
@@ -720,6 +699,12 @@ m3t_tracker_ros:
       validation: {
         gt<>: 0.0,
       }
+    },
+    model_occlusion: {
+      type: bool,
+      default_value: false,
+      description: "@mfoumy plz help.",
+      read_only: True,
     },
     modeled_occlusion_radius: {
       type: double,
