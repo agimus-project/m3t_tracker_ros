@@ -85,29 +85,13 @@ def launch_setup(
             {
                 "dataset_path": tmp_data_path.as_posix(),
                 "tracked_objects": ["global", object_class_id],
+                "region_modality.model_occlusion": True,
+                "region_modality.learning_rate_f": 0.5,
+                "region_modality.learning_rate_b": 0.5,
+                "optimizer.tikhonov_parameter_rotation": 500.0,
+                "optimizer.tikhonov_parameter_translation": 20000.0,
+                # "use_texture_modality": True
             }
-        ],
-    )
-
-    # Publish 3D mesh of tracked object
-    happypose_marker_publisher = Node(
-        package="happypose_marker_publisher",
-        executable="marker_publisher",
-        name="marker_publisher_node",
-        parameters=[
-            {
-                "filename_format": "${class_id}.obj",
-                "marker_lifetime": 0.3,
-                "mesh.use_vision_info_uri": False,
-                "mesh.uri": "file://" + tmp_data_path.as_posix(),
-                "mesh.scale": 1.0,
-                "mesh.color_overwrite": [0.5, 1.0, 0.5, 1.0],
-            }
-        ],
-        remappings=[
-            ("/reference/detections", "/m3t_tracker/detections"),
-            ("/reference/vision_info", "/m3t_tracker/vision_info"),
-            ("/marker_publisher_node/markers", "/m3t_tracker/markers"),
         ],
     )
 

@@ -5,6 +5,8 @@ import numpy.typing as npt
 import pathlib
 from typing import List, Tuple, Union
 
+import cv2
+
 import pym3t
 
 
@@ -79,6 +81,14 @@ class SpecializedTracker:
             self._renderer_geometry,
             self._dummy_color_camera,
         )
+
+        cv2.namedWindow("color_viewer", cv2.WINDOW_AUTOSIZE)
+        self._color_viewer = pym3t.NormalColorViewer(
+            "color_viewer", self._dummy_color_camera, self._renderer_geometry
+        )
+        self._color_viewer.display_images = True
+        self._color_viewer.SetUp()
+
         # Create dictionary holding preloaded optimizer objects
         self._preloaded_optimizers = {
             class_id: [
@@ -102,6 +112,7 @@ class SpecializedTracker:
         self._tracker.n_update_iterations = self._params["tracker"][
             "n_update_iterations"
         ]
+        self._tracker.AddViewer(self._color_viewer)
 
     def track_image(
         self,
@@ -177,6 +188,8 @@ class SpecializedTracker:
             self._execute_starting_step = False
 
         self._tracker.ExecuteTrackingStep(self._counter)
+        self._color_viewer.UpdateViewer(self._counter)
+        cv2.waitKey(1)
         self._counter += 1
 
         # Create a map of optimizer name to held body pose
@@ -184,6 +197,7 @@ class SpecializedTracker:
             optimizer.name: optimizer.root_link.body.body2world_pose
             for optimizer in self._tracker.optimizers
         }
+
         # Update body poses
         for i, track in enumerate(self._last_objects_order):
             optimizer_name = self._known_objects[track.id].name
@@ -298,12 +312,12 @@ class SpecializedTracker:
             # Reattach it
             self._tracker.AddOptimizer(optimizer)
 
-        # if not self._tracker.SetUp(set_up_all_objects=False):
-        #     raise RuntimeError(
-        #         "Failed to " "initialize"
-        #         if self._first_setup
-        #         else "reinitialize updated " "tracker!"
-        #     )
+        if not self._tracker.SetUp(set_up_all_objects=False):
+            raise RuntimeError(
+                "Failed to " "initialize"
+                if self._first_setup
+                else "reinitialize updated " "tracker!"
+            )
 
     def _image_data_to_intrinsics(
         self, camera_k: npt.NDArray[np.float64], im_shape: Tuple[int]
@@ -365,6 +379,7 @@ class SpecializedTracker:
             geometry2body_pose=np.eye(4),
         )
         # body.SetUp()
+        self._renderer_geometry.AddBody(body)
         link = pym3t.Link(object_name + "_link", body)
 
         region_model = pym3t.RegionModel(
