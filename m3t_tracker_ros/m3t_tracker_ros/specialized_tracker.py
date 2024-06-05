@@ -54,16 +54,16 @@ class SpecializedTracker:
 
         # Tracker OpenGL interface
         self._renderer_geometry = pym3t.RendererGeometry("renderer_geometry")
-        self._renderer_geometry.SetUp()
+        # self._renderer_geometry.SetUp()
 
         # Initialize M3T tracker
         self._dummy_color_camera = pym3t.DummyColorCamera("dummy_color_camera")
         self._dummy_color_camera.camera2world_pose = np.eye(4)
-        self._dummy_color_camera.SetUp()
+        # self._dummy_color_camera.SetUp()
 
         if self._params["use_depth"]:
             self._dummy_depth_camera = pym3t.DummyDepthCamera("dummy_depth_camera")
-            self._dummy_depth_camera.SetUp()
+            # self._dummy_depth_camera.SetUp()
             self._focused_depth_depth_renderer = pym3t.FocusedBasicDepthRenderer(
                 f"focused_depth_depth_renderer_{self._dummy_depth_camera.name}",
                 self._renderer_geometry,
@@ -95,6 +95,7 @@ class SpecializedTracker:
         self._known_objects = {}
 
         self._first_setup = True
+        self._counter = 0
         self._execute_starting_step = True
         self._tracker = pym3t.Tracker("tracker", synchronize_cameras=False)
         self._tracker.n_corr_iterations = self._params["tracker"]["n_corr_iterations"]
@@ -143,7 +144,7 @@ class SpecializedTracker:
         old_k = self._dummy_color_camera.intrinsics
         if old_k is None or not self._intrinsics_equal(new_k, old_k):
             self._dummy_color_camera.intrinsics = new_k
-            self._dummy_color_camera.SetUp()
+            # self._dummy_color_camera.SetUp()
 
         if depth_image and depth_camera_k and depth2color_pose:
             self._dummy_depth_camera.image = depth_image
@@ -171,7 +172,8 @@ class SpecializedTracker:
             self._tracker.ExecuteStartingStep(0)
             self._execute_starting_step = False
 
-        self._tracker.ExecuteTrackingStep(0)
+        self._tracker.ExecuteTrackingStep(self._counter)
+        self._counter += 1
 
         # Create a map of optimizer name to held body pose
         optimizers = {
@@ -186,7 +188,8 @@ class SpecializedTracker:
         return self._last_objects_order
 
     def update_tracked_objects(self, objects: List[TrackedObject]) -> None:
-        """Updates internal list of tracked objects. Creates new optimizer if given object
+        """Updates internal
+        list of tracked objects. Creates new optimizer if given object
         type is missing one. Removes optimizers if not sued for long time and manages
         history of histograms for known objects.
 
@@ -218,10 +221,11 @@ class SpecializedTracker:
 
             optimizer = self._known_objects[track.id]
             optimizer.root_link.body.body2world_pose = track.body2camera_pose
-            optimizer.SetUp()
+            # optimizer.SetUp()
             self._tracker.AddOptimizer(optimizer)
 
-        if not self._tracker.SetUp(set_up_all_objects=self._first_setup):
+        # if not self._tracker.SetUp(set_up_all_objects=self._first_setup):
+        if not self._tracker.SetUp(set_up_all_objects=True):
             raise RuntimeError(
                 "Failed to " "initialize"
                 if self._first_setup
@@ -266,11 +270,11 @@ class SpecializedTracker:
                             ].descriptor_type = self._match_texture_descriptor_type(
                                 mod_params["descriptor_type_name"]
                             )
-                        optimizer.root_link.modality[idx].SetUp()
+                        # optimizer.root_link.modality[idx].SetUp()
                         continue
 
             # Reinitialize the optimizer and reattach it to the tracker
-            optimizer.SetUp()
+            # optimizer.SetUp()
 
         # Loop over keys and indexes to explicitly modify elements of dictionary and lists
         for class_id in self._preloaded_optimizers.keys():
@@ -287,7 +291,12 @@ class SpecializedTracker:
             # Reattach it
             self._tracker.AddOptimizer(optimizer)
 
-        self._tracker.SetUp()
+        # if not self._tracker.SetUp(set_up_all_objects=False):
+        #     raise RuntimeError(
+        #         "Failed to " "initialize"
+        #         if self._first_setup
+        #         else "reinitialize updated " "tracker!"
+        #     )
 
     def _image_data_to_intrinsics(
         self, camera_k: npt.NDArray[np.float64], im_shape: Tuple[int]
@@ -348,7 +357,7 @@ class SpecializedTracker:
             geometry_enable_culling=True,
             geometry2body_pose=np.eye(4),
         )
-        body.SetUp()
+        # body.SetUp()
         link = pym3t.Link(object_name + "_link", body)
 
         region_model = pym3t.RegionModel(
@@ -356,7 +365,7 @@ class SpecializedTracker:
             body,
             object_files["m3t_rmb"].as_posix(),
         )
-        region_model.SetUp()
+        # region_model.SetUp()
         region_modality = pym3t.RegionModality(
             object_name + "_region_modality",
             body,
@@ -380,7 +389,7 @@ class SpecializedTracker:
             self._focused_color_depth_renderer.AddReferencedBody(body)
             region_modality.ModelOcclusions(self._focused_color_depth_renderer)
 
-        region_modality.SetUp()
+        # region_modality.SetUp()
         link.AddModality(region_modality)
 
         if self._params["use_depth"] and self._params["use_depth_modality"]:
@@ -389,7 +398,7 @@ class SpecializedTracker:
                 body,
                 object_files["m3t_dmb"].as_posix(),
             )
-            depth_model.SetUp()
+            # depth_model.SetUp()
             depth_modality = pym3t.DepthModality(
                 object_name + "_depth_modality",
                 body,
@@ -408,7 +417,7 @@ class SpecializedTracker:
                 self._focused_depth_depth_renderer.AddReferencedBody(body)
                 depth_modality.ModelOcclusions(self._focused_depth_depth_renderer)
 
-            depth_modality.SetUp()
+            # depth_modality.SetUp()
             link.AddModality(depth_modality)
 
         if self._params["use_texture_modality"]:
@@ -444,14 +453,14 @@ class SpecializedTracker:
 
             link.AddModality(texture_modality)
 
-        link.SetUp()
+        # link.SetUp()
 
         optimizer = pym3t.Optimizer(
             object_name + "_optimizer",
             link,
         )
         optimizer = self._update_object_config(optimizer, self._params["optimizer"])
-        optimizer.SetUp()
+        # optimizer.SetUp()
 
         return optimizer
 

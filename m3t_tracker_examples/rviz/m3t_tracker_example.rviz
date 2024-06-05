@@ -61,6 +61,7 @@ Visualization Manager:
       Visibility:
         Grid: false
         Marker: true
+        MarkerArray: true
         TF: false
         Value: true
       Zoom Factor: 1
@@ -96,6 +97,18 @@ Visualization Manager:
           webcam:
             {}
       Update Interval: 0
+      Value: true
+    - Class: rviz_default_plugins/MarkerArray
+      Enabled: true
+      Name: MarkerArray
+      Namespaces:
+        {}
+      Topic:
+        Depth: 5
+        Durability Policy: Volatile
+        History Policy: Keep Last
+        Reliability Policy: Reliable
+        Value: /m3t_tracker/markers
       Value: true
   Enabled: true
   Global Options:
