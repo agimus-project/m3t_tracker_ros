@@ -5,8 +5,6 @@ import numpy.typing as npt
 import pathlib
 from typing import List, Tuple, Union
 
-import cv2
-
 import pym3t
 
 
@@ -82,13 +80,6 @@ class SpecializedTracker:
             self._dummy_color_camera,
         )
 
-        cv2.namedWindow("color_viewer", cv2.WINDOW_AUTOSIZE)
-        self._color_viewer = pym3t.NormalColorViewer(
-            "color_viewer", self._dummy_color_camera, self._renderer_geometry
-        )
-        self._color_viewer.display_images = True
-        self._color_viewer.SetUp()
-
         # Create dictionary holding preloaded optimizer objects
         self._preloaded_optimizers = {
             class_id: [
@@ -112,7 +103,6 @@ class SpecializedTracker:
         self._tracker.n_update_iterations = self._params["tracker"][
             "n_update_iterations"
         ]
-        self._tracker.AddViewer(self._color_viewer)
 
     def track_image(
         self,
@@ -188,8 +178,6 @@ class SpecializedTracker:
             self._execute_starting_step = False
 
         self._tracker.ExecuteTrackingStep(self._counter)
-        self._color_viewer.UpdateViewer(self._counter)
-        cv2.waitKey(1)
         self._counter += 1
 
         # Create a map of optimizer name to held body pose
@@ -336,8 +324,8 @@ class SpecializedTracker:
             fv=camera_k[4],
             ppu=camera_k[2],
             ppv=camera_k[5],
-            width=im_shape[0],
-            height=im_shape[1],
+            width=im_shape[1],
+            height=im_shape[0],
         )
 
     def _intrinsics_equal(self, k_1: pym3t.Intrinsics, k_2: pym3t.Intrinsics) -> bool:
