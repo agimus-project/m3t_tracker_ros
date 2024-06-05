@@ -116,7 +116,7 @@ class TrackerNodeBase(Node):
         camera_header: Header,
         color_image: npt.NDArray[np.uint8],
         color_camera_k: npt.NDArray[np.float64],
-        depth_image: Union[None, npt.NDArray[np.float16]],
+        depth_image: Union[None, npt.NDArray[np.uint16]],
         depth_camera_k: Union[None, npt.NDArray[np.float64]],
         depth2color_pose: Union[None, npt.NDArray[np.float32]],
     ) -> Detection2DArray:
@@ -129,7 +129,7 @@ class TrackerNodeBase(Node):
         :param color_camera_k: Matrix with intrinsic parameters of the color camera.
         :type color_camera_k: npt.NDArray[np.float64]
         :param depth_image: OpenCV style CV_16UC1 depth image. None if not used.
-        :type depth_image: Union[None, npt.NDArray[np.float16]]
+        :type depth_image: Union[None, npt.NDArray[np.uint16]]
         :param depth_camera_k:  Matrix with intrinsic parameters of the depth camera.
             None if not used.
         :type depth_camera_k: Union[None, npt.NDArray[np.float64]]
@@ -216,8 +216,9 @@ class TrackerNodeBase(Node):
             # Each pixel is a depth (along the camera Z axis) in meters.
             # ROS 2 topic echo shows, clearly 16UC1, with depth scale 16
             # ICG expects a CV_16UC1.
-            encoding = "passthrough" if depth_image.encoding == "16UC1" else "16UC1"
-            image_depth = self._cvb.imgmsg_to_cv2(depth_image, encoding)
+            # encoding = "passthrough" if depth_image.encoding == "16UC1" else "16UC1"
+            # Somehow not always "16C1" in the message field means to be correct value
+            image_depth = self._cvb.imgmsg_to_cv2(depth_image, "16UC1")
         else:
             transform_depth = None
             intrinsics_depth = None
@@ -261,7 +262,7 @@ class TrackerNodeBase(Node):
         camera_header: Header,
         color_image: npt.NDArray[np.uint8],
         color_camera_k: npt.NDArray[np.float64],
-        depth_image: Union[None, npt.NDArray[np.float16]],
+        depth_image: Union[None, npt.NDArray[np.uint16]],
         depth_camera_k: Union[None, npt.NDArray[np.float64]],
         depth2color_pose: Union[None, npt.NDArray[np.float32]],
         tracked_objects: Detection2DArray,
@@ -280,7 +281,7 @@ class TrackerNodeBase(Node):
         :param color_camera_k: Matrix with intrinsic parameters of the color camera.
         :type color_camera_k: npt.NDArray[np.float64]
         :param depth_image: OpenCV style CV_16UC1 depth image. None if not used.
-        :type depth_image: Union[None, npt.NDArray[np.float16]]
+        :type depth_image: Union[None, npt.NDArray[np.uint16]]
         :param depth_camera_k:  Matrix with intrinsic parameters of the depth camera.
             None if not used.
         :type depth_camera_k: Union[None, npt.NDArray[np.float64]]

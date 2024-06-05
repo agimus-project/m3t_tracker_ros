@@ -135,34 +135,38 @@ class SpecializedTracker:
 
         # If nothing to track raise an exception
         if len(self._last_objects_order) == 0:
-            return RuntimeError("Nothing to track!")
+            raise RuntimeError("Nothing to track!")
 
         self._dummy_color_camera.image = color_image
 
         # Updating intrinsics requires to set up the camera
         new_k = self._image_data_to_intrinsics(color_camera_k, color_image.shape)
         old_k = self._dummy_color_camera.intrinsics
+        reset_tracker = False
         if old_k is None or not self._intrinsics_equal(new_k, old_k):
             self._dummy_color_camera.intrinsics = new_k
-            # self._dummy_color_camera.SetUp()
+            reset_tracker = True
 
-        if depth_image and depth_camera_k and depth2color_pose:
+        if (
+            depth_image is not None
+            and depth_camera_k is not None
+            and depth2color_pose is not None
+        ):
             self._dummy_depth_camera.image = depth_image
 
-            reset = False
             new_k = self._image_data_to_intrinsics(depth_camera_k, depth_image.shape)
             old_k = self._dummy_depth_camera.intrinsics
             if old_k is None or not self._intrinsics_equal(new_k, old_k):
                 self._dummy_depth_camera.intrinsics = new_k
-                reset = True
+                reset_tracker = True
 
             old_pose = self._dummy_depth_camera.camera2world_pose
-            if old_pose is None or not np.isclose(old_pose, depth2color_pose):
+            if old_pose is None or not np.isclose(old_pose, depth2color_pose).any():
                 self._dummy_depth_camera.camera2world_pose = depth2color_pose
-                reset = True
+                reset_tracker = True
 
-            if reset:
-                self._dummy_depth_camera.SetUp()
+        if reset_tracker:
+            self._tracker.SetUp()
 
         # 0 is just a dummy value, as it is not used in the C++ code
         if not self._tracker.UpdateCameras(0):
@@ -211,6 +215,8 @@ class SpecializedTracker:
             # The track was not previously known
             if track.id not in self._known_objects:
                 # If not new tracks can be assigned for a given object, ignore it
+                if track.class_id not in self._preloaded_optimizers:
+                    raise RuntimeError(f"Unknown class id: '{track.class_id}'")
                 if len(self._preloaded_optimizers[track.class_id]) == 0:
                     # TODO add some log
                     continue
@@ -263,12 +269,13 @@ class SpecializedTracker:
                             mod_params,
                         )
                         if modality_type == "texture_modality":
-                            # Parameter ``descriptor_type`` is exposed as string and has to be
-                            # casted to a matching integer
-                            optimizer.root_link.modality[
-                                idx
-                            ].descriptor_type = self._match_texture_descriptor_type(
-                                mod_params["descriptor_type_name"]
+                            # Parameter ``descriptor_type`` is exposed as string
+                            # and has to be TextureModality::DescriptorType enum
+                            optimizer.root_link.modality[idx].descriptor_type = getattr(
+                                pym3t.DescriptorType,
+                                self._params["texture_modality"][
+                                    "descriptor_type_name"
+                                ],
                             )
                         # optimizer.root_link.modality[idx].SetUp()
                         continue
@@ -432,10 +439,11 @@ class SpecializedTracker:
                 texture_modality,
                 self._params["texture_modality"],
             )
-            # Parameter ``descriptor_type`` is exposed as string and has to be
-            # casted to a matching integer
-            texture_modality.descriptor_type = self._match_texture_descriptor_type(
-                self._params["texture_modality"]["descriptor_type_name"]
+            # Parameter ``descriptor_type`` is exposed as string
+            # and has to be TextureModality::DescriptorType enum
+            texture_modality.descriptor_type = getattr(
+                pym3t.DescriptorType,
+                self._params["texture_modality"]["descriptor_type_name"],
             )
 
             if self._params["texture_modality"]["measure_occlusions"]:
@@ -451,6 +459,7 @@ class SpecializedTracker:
                     self._focused_color_depth_renderer.AddReferencedBody(body)
                 texture_modality.ModelOcclusions(self._focused_color_depth_renderer)
 
+            texture_modality.SetUp()
             link.AddModality(texture_modality)
 
         # link.SetUp()
@@ -562,15 +571,3 @@ class SpecializedTracker:
             )
 
         return objects_with_valid_paths
-
-    def _match_texture_descriptor_type(self, description_type: str) -> int:
-        """Matches string names of descriptors with ones from ``m3t/texture_modality.h`` file.
-
-        :param description_type: Name of the descriptor type of TextureModality class.
-        :type description_type: str
-        :return: Integer representation of the descriptor type.
-        :rtype: int
-        """
-        return {"BRISK": 0, "DAISY": 1, "FREAK": 2, "SIFT": 3, "ORB": 4, "ORB_CUDA": 5}[
-            description_type
-        ]
