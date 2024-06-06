@@ -116,6 +116,9 @@ def process_meshes() -> None:
             f"No files of a type '.{args.mesh_format}' found in the source directory!"
         )
 
+    # Sort by file names
+    input_meshes_paths.sort(key=lambda path: path.stem)
+
     for input_file in input_meshes_paths:
         object_name = input_file.stem
         output_path = (output_folder_path / object_name).as_posix()
