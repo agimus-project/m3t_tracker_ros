@@ -20,6 +20,22 @@ def check_object_model_path(param: Parameter) -> str:
     return
 
 
+def filename_format_correct(param: Parameter) -> str:
+    """Checks if filename format string contains substring ``${class_id}`` sub string
+    and ends with ``.${file_fmt}``.
+
+    :param param: ROS parameter with a string containing the filename_format string.
+    :type param: rclpy.Parameter
+    :return: Error explanation. If empty string, everything is correct.
+    :rtype: str
+    """
+    if not param.value.endswith(".${file_fmt}"):
+        return "String '" + param.value + "' does not end with substring '.${file_fmt}'"
+    if "${class_id}" not in param.value:
+        return "String '" + param.value + "' does not contain substring '${class_id}'"
+    return ""
+
+
 def tracked_objects_have_global(param: Parameter) -> str:
     """Ensures if the list of names contains ``global`` keyword in it.
 

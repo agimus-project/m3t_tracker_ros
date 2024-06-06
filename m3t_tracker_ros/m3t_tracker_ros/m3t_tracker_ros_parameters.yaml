@@ -9,6 +9,20 @@ m3t_tracker_ros:
     read_only: true,
   }
 
+  class_id_regex:
+    type: string
+    default_value: ".*"
+    description: "Regex used to match class id with filename of associated mesh file."
+    read_only: true
+
+  filename_format:
+    type: string
+    default_value: "${class_id}.${file_fmt}"
+    description: "Format in which class id is wrapped to generate filename. Eg. 'tless-${class_id}.${file_fmt}' will expect files with name 'tless-obj_000001.obj' and 'tless-obj_000001.m3t_rmb'."
+    validation:
+      "custom_validators::filename_format_correct": null
+    read_only: true
+
   use_depth: {
     type: bool,
     default_value: false,

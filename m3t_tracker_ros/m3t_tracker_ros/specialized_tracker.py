@@ -3,6 +3,7 @@ import math
 import numpy as np
 import numpy.typing as npt
 import pathlib
+import re
 from typing import List, Tuple, Union
 
 import pym3t
@@ -35,21 +36,41 @@ class SpecializedTracker:
         """
         self._params = params
 
-        # Only object called ``global`` is in the list (validated by custom validators)
-        if len(self._params["tracked_objects"]) == 1:
+        self._prefix, self._postfix = (
+            self._params["filename_format"]
+            .removesuffix(".${file_fmt}")
+            .split("${class_id}")
+        )
+        self._pattern = re.compile(self._params["class_id_regex"])
+
+        def _get_inner_class_id(outer_class_id: "str") -> str:
+            raw_class_id = self._pattern.findall(outer_class_id)[0]
+            return self._prefix + raw_class_id + self._postfix
+
+        # Create a map to convert received class id to the their inner names
+        self._outer_to_inner_classes = {
+            obj: _get_inner_class_id(obj) for obj in self._params["tracked_objects"]
+        }
+        # Invert the dependency for fast reconstruction
+        self._inner_to_outer_classes = {
+            v: k for k, v in self._outer_to_inner_classes.items()
+        }
+
+        inner_class_names = list(self._inner_to_outer_classes.keys())
+
+        # Check if list of the objects is not empty
+        if not len(inner_class_names):
             raise ValueError("No objects passed to track!")
 
         self._valid_class_ids = self._check_dataset_path(
             pathlib.Path(self._params["dataset_path"]),
-            self._params["tracked_objects"],
+            inner_class_names,
             self._params["use_depth"],
         )
 
-        # Object ``global`` can not be loaded
-        if len(self._valid_class_ids) - len(self._params["tracked_objects"]) > 1:
-            diff = set(self._params["tracked_objects"]) - set(
-                self._valid_class_ids.keys()
-            )
+        # If not all objects were possible to be loaded
+        if len(self._valid_class_ids) - len(inner_class_names):
+            diff = set(inner_class_names) - set(self._valid_class_ids.keys())
             raise RuntimeError(f"Filed to load models for objects: {diff}!")
 
         # Tracker OpenGL interface
@@ -84,7 +105,11 @@ class SpecializedTracker:
         self._preloaded_optimizers = {
             class_id: [
                 self._assemble_object_optimizer(class_id, f"_{i}")
-                for i in range(self._params[class_id]["max_instances"])
+                for i in range(
+                    self._params[self._inner_to_outer_classes[class_id]][
+                        "max_instances"
+                    ]
+                )
             ]
             for class_id in self._valid_class_ids
         }
@@ -214,6 +239,8 @@ class SpecializedTracker:
         self._tracker.ClearOptimizers()
 
         for track in self._last_objects_order:
+            # Convert class id format
+            track.class_id = self._outer_to_inner_classes[track.class_id]
             # The track was not previously known
             if track.id not in self._known_objects:
                 # If not new tracks can be assigned for a given object, ignore it
