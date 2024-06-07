@@ -229,9 +229,8 @@ class SpecializedTracker:
         :raises RuntimeError: Class id of known object changed.
         :raises RuntimeError: Reinitialization of the tracker failed.
         """
+        self._last_objects_order = objects
 
-        # Filter only the objects with the tracks
-        self._last_objects_order = [obj for obj in objects if obj.id != ""]
         # If nothing to track skip the rest
         if len(self._last_objects_order) == 0:
             return

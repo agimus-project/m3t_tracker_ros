@@ -16,7 +16,7 @@ from message_filters import ApproximateTimeSynchronizer, Subscriber
 
 from std_msgs.msg import Header
 from sensor_msgs.msg import CameraInfo, Image
-from vision_msgs.msg import Detection2DArray, VisionInfo
+from vision_msgs.msg import Detection2D, Detection2DArray, VisionInfo
 
 from m3t_tracker_ros.specialized_tracker import SpecializedTracker
 from m3t_tracker_ros.utils import (
@@ -301,6 +301,46 @@ class TrackerNodeBase(Node):
         """
         if len(tracked_objects.detections) == 0:
             raise RuntimeError("No objects to track")
+
+        obj_counter = {obj: 0 for obj in self._params.tracked_objects}
+
+        def _filter_and_log(idx: int, detection: Detection2D) -> bool:
+            class_id = detection.results[0].hypothesis.class_id
+            if class_id not in self._params.tracked_objects:
+                self.get_logger().warn(
+                    f"Unknown class id '{class_id}' for detection at index '{idx}'. "
+                    "Detection discarded!",
+                    throttle_duration_sec=5.0,
+                )
+                return False
+
+            obj_counter[class_id] += 1
+            if obj_counter[class_id] > self._params.get_entry(class_id).max_instances:
+                self.get_logger().warn(
+                    f"Class '{class_id}' reached its maximum number of instances to be "
+                    f"tracked at the same time. Discarding detection at index '{idx}'.",
+                    throttle_duration_sec=5.0,
+                )
+                return False
+
+            if detection.id == "":
+                self.get_logger().warn(
+                    f"Detection of a class '{class_id}' "
+                    f"at index '{idx}' was discarded due to empty 'id' filed.",
+                    throttle_duration_sec=5.0,
+                )
+                return False
+            return True
+
+        # Filter only the objects with the tracks
+        tracked_objects.detections = [
+            obj
+            for i, obj in enumerate(tracked_objects.detections)
+            if _filter_and_log(i, obj)
+        ]
+
+        if len(tracked_objects.detections) == 0:
+            raise RuntimeError("All new detections were discarded!")
 
         if new_detection or self._params.compensate_camera_motion:
             # If camera frame is used as a stationary frame its
