@@ -1,3 +1,4 @@
+---
 repos:
 - repo: https://github.com/astral-sh/ruff-pre-commit
   rev: v0.4.3
@@ -29,6 +30,11 @@ repos:
   rev: v2.2.6
   hooks:
   - id: codespell
-    args: ['--write-changes', '--check-filenames']
+    args: [--write-changes, --check-filenames]
     additional_dependencies:
-      - tomli
+    - tomli
+- repo: https://github.com/jumanjihouse/pre-commit-hook-yamlfmt
+  rev: 0.2.3
+  hooks:
+  - id: yamlfmt
+    args: [--mapping, '2', --sequence, '2', --offset, '0', --colons, --width, '88']

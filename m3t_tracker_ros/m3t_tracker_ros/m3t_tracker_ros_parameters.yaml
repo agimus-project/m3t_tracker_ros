@@ -1,739 +1,640 @@
+---
 m3t_tracker_ros:
-  dataset_path: {
-    type: string,
-    description: "Global path to the precomputed dataset of object modalities.",
-    validation: {
-      not_empty<>: [],
-      "custom_validators::check_object_model_path": null
-    },
-    read_only: true,
-  }
+  dataset_path:
+    type: string
+    description: Global path to the precomputed dataset of object modalities.
+    validation:
+      not_empty<>: []
+      custom_validators::check_object_model_path:
+    read_only: true
 
   class_id_regex:
     type: string
-    default_value: ".*"
-    description: "Regex used to match class id with filename of associated mesh file."
+    default_value: .*
+    description: Regex used to match class id with filename of associated mesh file.
     read_only: true
 
   filename_format:
     type: string
-    default_value: "${class_id}.${file_fmt}"
-    description: "Format in which class id is wrapped to generate filename. Eg. 'tless-${class_id}.${file_fmt}' will expect files with name 'tless-obj_000001.obj' and 'tless-obj_000001.m3t_rmb'."
+    default_value: ${class_id}.${file_fmt}
+    description: Format in which class id is wrapped to generate filename. Eg. 'tless-${class_id}.${file_fmt}'
+      will expect files with name 'tless-obj_000001.obj' and 'tless-obj_000001.m3t_rmb'.
     validation:
-      "custom_validators::filename_format_correct": null
+      custom_validators::filename_format_correct:
     read_only: true
 
-  use_depth: {
-    type: bool,
-    default_value: false,
-    description: "Whether to expect depth images to be published.",
-    read_only: true,
-  }
+  use_depth:
+    type: bool
+    default_value: false
+    description: Whether to expect depth images to be published.
+    read_only: true
 
-  time_sync_slop: {
-    type: double,
-    default_value: 0.05,
-    description: "Delay [seconds] with which incoming messages can be synchronized.",
-    read_only: true,
-  }
+  time_sync_slop:
+    type: double
+    default_value: 0.05
+    description: Delay [seconds] with which incoming messages can be synchronized.
+    read_only: true
 
-  detection_to_image_time_slop: {
-    type: double,
-    default_value: 0.1,
-    description: "Time difference [seconds] between new detection and image for tracker to recover.",
-    read_only: true,
-  }
+  detection_to_image_time_slop:
+    type: double
+    default_value: 0.1
+    description: Time difference [seconds] between new detection and image for tracker to
+      recover.
+    read_only: true
 
-  compensate_camera_motion: {
-    type: bool,
-    default_value: false,
-    description: "Whether to recast detection poses to account for camera movement.",
-  }
+  compensate_camera_motion:
+    type: bool
+    default_value: false
+    description: Whether to recast detection poses to account for camera movement.
 
-  camera_motion_stationary_frame_id: {
-    type: string,
-    default_value: "world",
-    description: "Stationary frame id to use as a reference when recasting.",
-    validation: {
-      not_empty<>: [],
-    },
-  }
+  camera_motion_stationary_frame_id:
+    type: string
+    default_value: world
+    description: Stationary frame id to use as a reference when recasting.
+    validation:
+      not_empty<>: []
 
-  tracker: {
-    n_corr_iterations: {
-      type: int,
-      default_value: 4,
-      description: "@mfoumy plz help.",
-      validation: {
-        gt_eq<>: 1,
-      }
-    },
+  tracker:
+    n_corr_iterations:
+      type: int
+      default_value: 4
+      description: '@mfoumy plz help.'
+      validation:
+        gt_eq<>: 1
 
-    n_update_iterations: {
-      type: int,
-      default_value: 2,
-      description: "@mfoumy plz help.",
-      validation: {
-        gt_eq<>: 1,
-      }
-    }
-  }
+    n_update_iterations:
+      type: int
+      default_value: 2
+      description: '@mfoumy plz help.'
+      validation:
+        gt_eq<>: 1
 
-  tracked_objects: {
-    type: string_array,
-    default_value: [""],
-    description: "Class IDs of the objects found in the precomputed modalities folder used to track them.",
-    read_only: true,
-    validation: {
-      not_empty<>: [],
-    },
-  }
+  tracked_objects:
+    type: string_array
+    default_value: ['']
+    description: Class IDs of the objects found in the precomputed modalities folder used
+      to track them.
+    read_only: true
+    validation:
+      not_empty<>: []
 
-  __map_tracked_objects: {
-    max_instances: {
-      type: int,
-      default_value: 1,
-      description: "Maximum number of instances of a given type of the object.",
-      validation: {
-        gt_eq<>: 1,
-      }
-    }
-  }
+  __map_tracked_objects:
+    max_instances:
+      type: int
+      default_value: 1
+      description: Maximum number of instances of a given type of the object.
+      validation:
+        gt_eq<>: 1
 
-  optimizer: {
-    tikhonov_parameter_rotation: {
-      type: double,
-      default_value: 1000.0,
-      description: "@mfoumy plz help.",
-      validation: {
+  optimizer:
+    tikhonov_parameter_rotation:
+      type: double
+      default_value: 1000.0
+      description: '@mfoumy plz help.'
+      validation:
         # @mfoumy should it be 0.0?
-        gt<>: 0.0,
-      }
-    },
-    tikhonov_parameter_translation: {
-      type: double,
-      default_value: 30000.0,
-      description: "@mfoumy plz help.",
-      validation: {
+        gt<>: 0.0
+
+    tikhonov_parameter_translation:
+      type: double
+      default_value: 30000.0
+      description: '@mfoumy plz help.'
+      validation:
         # @mfoumy should it be 0.0?
-        gt<>: 0.0,
-      }
-    },
-  }
+        gt<>: 0.0
 
-  region_modality: {
-    n_lines_max: {
-      type: int,
-      default_value: 200,
-      description: "@mfoumy plz help.",
-      validation: {
-        gt_eq<>: 1,
-      },
-    },
-    use_adaptive_coverage: {
-      type: bool,
-      default_value: false,
-      description: "@mfoumy plz help.",
-    },
-    min_continuous_distance: {
-      type: double,
-      default_value: 3.0,
-      description: "@mfoumy plz help.",
-      validation: {
-        gt_eq<>: 0.0,
-      }
-    },
-    function_length: {
-      type: int,
-      default_value: 8,
-      description: "@mfoumy plz help.",
-      validation: {
-        gt_eq<>: 1,
-      },
-    },
-    distribution_length: {
-      type: int,
-      default_value: 12,
-      description: "@mfoumy plz help.",
-      validation: {
+  region_modality:
+    n_lines_max:
+      type: int
+      default_value: 200
+      description: '@mfoumy plz help.'
+      validation:
+        gt_eq<>: 1
+
+    use_adaptive_coverage:
+      type: bool
+      default_value: false
+      description: '@mfoumy plz help.'
+
+    min_continuous_distance:
+      type: double
+      default_value: 3.0
+      description: '@mfoumy plz help.'
+      validation:
+        gt_eq<>: 0.0
+
+    function_length:
+      type: int
+      default_value: 8
+      description: '@mfoumy plz help.'
+      validation:
+        gt_eq<>: 1
+
+    distribution_length:
+      type: int
+      default_value: 12
+      description: '@mfoumy plz help.'
+      validation:
         # @mfoumy should it be 1?
-        gt_eq<>: 1,
-      },
-    },
-    function_amplitude: {
-      type: double,
-      default_value: 0.43,
-      description: "@mfoumy plz help.",
-      validation: {
-        gt<>: 0.0,
-      }
-    },
-    function_slope: {
-      type: double,
-      default_value: 0.5,
-      description: "@mfoumy plz help.",
-      validation: {
+        gt_eq<>: 1
+
+    function_amplitude:
+      type: double
+      default_value: 0.43
+      description: '@mfoumy plz help.'
+      validation:
+        gt<>: 0.0
+
+    function_slope:
+      type: double
+      default_value: 0.5
+      description: '@mfoumy plz help.'
+      validation:
         # @mfoumy should it be 0.0?
-        gt<>: 0.0,
-      }
-    },
-    learning_rate: {
-      type: double,
-      default_value: 1.3,
-      description: "@mfoumy plz help.",
-      validation: {
-        gt<>: 0.0,
-      }
-    },
-    n_global_iterations: {
-      type: int,
-      default_value: 1,
-      description: "@mfoumy plz help.",
-      validation: {
-        # @mfoumy should it be 1?
-        gt_eq<>: 1,
-      }
-    },
-    scales: {
-      type: int_array,
-      # @mfoumy does it have a fixed size and value constraints?
-      default_value: [6, 4, 2, 1],
-      description: "@mfoumy plz help.",
-      validation: {
-        not_empty<>: [],
-      }
-    },
-    standard_deviations: {
-      type: double_array,
-      # @mfoumy does it have a fixed size and value constraints?
-      default_value: [15.0, 5.0, 3.5, 1.5],
-      description: "@mfoumy plz help.",
-      validation: {
-        not_empty<>: [],
-      }
-    },
-    n_histogram_bins: {
-      type: int,
-      default_value: 16,
-      description: "@mfoumy plz help.",
-      validation: {
-        gt_eq<>: 1,
-      }
-    },
-    learning_rate_f: {
-      type: double,
-      default_value: 0.2,
-      description: "@mfoumy plz help.",
-      validation: {
-        gt<>: 0.0,
-      }
-    },
-    learning_rate_b: {
-      type: double,
-      default_value: 0.2,
-      description: "@mfoumy plz help.",
-      validation: {
-        gt<>: 0.0,
-      }
-    },
-    unconsidered_line_length: {
-      type: double,
-      default_value: 0.5,
-      description: "@mfoumy plz help.",
-      validation: {
-        gt<>: 0.0,
-      }
-    },
-    max_considered_line_length: {
-      type: double,
-      default_value: 20.0,
-      description: "@mfoumy plz help.",
-      validation: {
-        gt<>: 0.0,
-      }
-    },
-    model_occlusion: {
-      type: bool,
-      default_value: false,
-      description: "Enables occlusion modeling for region modality.",
-      read_only: True,
-    },
-    n_unoccluded_iterations: {
-      type: int,
-      default_value: 10,
-      description: "@mfoumy plz help.",
-      validation: {
-        # @mfoumy should it be 1?
-        gt_eq<>: 1,
-      }
-    },
-    min_n_unoccluded_lines: {
-      type: int,
-      default_value: 0,
-      description: "@mfoumy plz help.",
-      validation: {
-        gt_eq<>: 0,
-      }
-    },
-    measure_occlusions: {
-      type: bool,
-      default_value: false,
-      description: "@mfoumy plz help.",
-      read_only: True,
-    },
-    measured_depth_offset_radius: {
-      type: double,
-      default_value: 0.01,
-      description: "@mfoumy plz help.",
-      validation: {
-        gt<>: 0.0,
-      }
-    },
-    measured_occlusion_radius: {
-      type: double,
-      default_value: 0.01,
-      description: "@mfoumy plz help.",
-      validation: {
-        gt<>: 0.0,
-      }
-    },
-    measured_occlusion_threshold: {
-      type: double,
-      default_value: 0.03,
-      description: "@mfoumy plz help.",
-      validation: {
-        gt<>: 0.0,
-      }
-    },
-    modeled_depth_offset_radius: {
-      type: double,
-      default_value: 0.01,
-      description: "@mfoumy plz help.",
-      validation: {
-        gt<>: 0.0,
-      }
-    },
-    modeled_occlusion_radius: {
-      type: double,
-      default_value: 0.01,
-      description: "@mfoumy plz help.",
-      validation: {
-        gt<>: 0.0,
-      }
-    },
-    modeled_occlusion_threshold: {
-      type: double,
-      default_value: 0.03,
-      description: "@mfoumy plz help.",
-      validation: {
-        gt<>: 0.0,
-      }
-    }
-  }
+        gt<>: 0.0
 
-  use_depth_modality: {
-      type: bool,
-      default_value: false,
-      description: "@mfoumy plz help.",
-      read_only: true,
-  }
+    learning_rate:
+      type: double
+      default_value: 1.3
+      description: '@mfoumy plz help.'
+      validation:
+        gt<>: 0.0
 
-  depth_modality: {
-    n_points_max: {
-      type: int,
-      default_value: 200,
-      description: "@mfoumy plz help.",
-      validation: {
+    n_global_iterations:
+      type: int
+      default_value: 1
+      description: '@mfoumy plz help.'
+      validation:
+        # @mfoumy should it be 1?
+        gt_eq<>: 1
+
+    scales:
+      type: int_array
+      # @mfoumy does it have a fixed size and value constraints?
+      default_value: [6, 4, 2, 1]
+      description: '@mfoumy plz help.'
+      validation:
+        not_empty<>: []
+
+    standard_deviations:
+      type: double_array
+      # @mfoumy does it have a fixed size and value constraints?
+      default_value: [15.0, 5.0, 3.5, 1.5]
+      description: '@mfoumy plz help.'
+      validation:
+        not_empty<>: []
+
+    n_histogram_bins:
+      type: int
+      default_value: 16
+      description: '@mfoumy plz help.'
+      validation:
+        gt_eq<>: 1
+
+    learning_rate_f:
+      type: double
+      default_value: 0.2
+      description: '@mfoumy plz help.'
+      validation:
+        gt<>: 0.0
+
+    learning_rate_b:
+      type: double
+      default_value: 0.2
+      description: '@mfoumy plz help.'
+      validation:
+        gt<>: 0.0
+
+    unconsidered_line_length:
+      type: double
+      default_value: 0.5
+      description: '@mfoumy plz help.'
+      validation:
+        gt<>: 0.0
+
+    max_considered_line_length:
+      type: double
+      default_value: 20.0
+      description: '@mfoumy plz help.'
+      validation:
+        gt<>: 0.0
+
+    model_occlusion:
+      type: bool
+      default_value: false
+      description: Enables occlusion modeling for region modality.
+      read_only: true
+
+    n_unoccluded_iterations:
+      type: int
+      default_value: 10
+      description: '@mfoumy plz help.'
+      validation:
+        # @mfoumy should it be 1?
+        gt_eq<>: 1
+
+    min_n_unoccluded_lines:
+      type: int
+      default_value: 0
+      description: '@mfoumy plz help.'
+      validation:
+        gt_eq<>: 0
+
+    measure_occlusions:
+      type: bool
+      default_value: false
+      description: '@mfoumy plz help.'
+      read_only: true
+
+    measured_depth_offset_radius:
+      type: double
+      default_value: 0.01
+      description: '@mfoumy plz help.'
+      validation:
+        gt<>: 0.0
+
+    measured_occlusion_radius:
+      type: double
+      default_value: 0.01
+      description: '@mfoumy plz help.'
+      validation:
+        gt<>: 0.0
+
+    measured_occlusion_threshold:
+      type: double
+      default_value: 0.03
+      description: '@mfoumy plz help.'
+      validation:
+        gt<>: 0.0
+
+    modeled_depth_offset_radius:
+      type: double
+      default_value: 0.01
+      description: '@mfoumy plz help.'
+      validation:
+        gt<>: 0.0
+
+    modeled_occlusion_radius:
+      type: double
+      default_value: 0.01
+      description: '@mfoumy plz help.'
+      validation:
+        gt<>: 0.0
+
+    modeled_occlusion_threshold:
+      type: double
+      default_value: 0.03
+      description: '@mfoumy plz help.'
+      validation:
+        gt<>: 0.0
+
+  use_depth_modality:
+    type: bool
+    default_value: false
+    description: '@mfoumy plz help.'
+    read_only: true
+
+  depth_modality:
+    n_points_max:
+      type: int
+      default_value: 200
+      description: '@mfoumy plz help.'
+      validation:
         # @mfoumy should it be 0.0?
-        gt_eq<>: 1,
-      }
-    },
-    use_adaptive_coverage: {
-      type: bool,
-      default_value: false,
-      description: "@mfoumy plz help.",
-    },
-    reference_surface_area: {
-      type: double,
-      default_value: 0.0,
-      description: "@mfoumy plz help.",
-      validation: {
-        gt_eq<>: 0.0,
-      }
-    },
-    stride_length: {
-      type: double,
-      default_value: 0.005,
-      description: "@mfoumy plz help.",
-      validation: {
-        gt<>: 0.0,
-      }
-    },
-    considered_distances: {
-      type: double_array,
+        gt_eq<>: 1
+
+    use_adaptive_coverage:
+      type: bool
+      default_value: false
+      description: '@mfoumy plz help.'
+
+    reference_surface_area:
+      type: double
+      default_value: 0.0
+      description: '@mfoumy plz help.'
+      validation:
+        gt_eq<>: 0.0
+
+    stride_length:
+      type: double
+      default_value: 0.005
+      description: '@mfoumy plz help.'
+      validation:
+        gt<>: 0.0
+
+    considered_distances:
+      type: double_array
       # @mfoumy does it have a fixed size and value constraints?
-      default_value: [0.05, 0.02, 0.01],
-      description: "@mfoumy plz help.",
-      validation: {
-        not_empty<>: [],
-      }
-    },
-    standard_deviations: {
-      type: double_array,
+      default_value: [0.05, 0.02, 0.01]
+      description: '@mfoumy plz help.'
+      validation:
+        not_empty<>: []
+
+    standard_deviations:
+      type: double_array
       # @mfoumy does it have a fixed size and value constraints?
-      default_value: [0.05, 0.03, 0.02],
-      description: "@mfoumy plz help.",
-      validation: {
-        not_empty<>: [],
-      }
-    },
-    n_unoccluded_iterations: {
-      type: int,
-      default_value: 10,
-      description: "@mfoumy plz help.",
-      validation: {
+      default_value: [0.05, 0.03, 0.02]
+      description: '@mfoumy plz help.'
+      validation:
+        not_empty<>: []
+
+    n_unoccluded_iterations:
+      type: int
+      default_value: 10
+      description: '@mfoumy plz help.'
+      validation:
         # @mfoumy should it be 1?
-        gt_eq<>: 1,
-      }
-    },
-    min_n_unoccluded_points: {
-      type: int,
-      default_value: 0,
-      description: "@mfoumy plz help.",
-      validation: {
-        gt_eq<>: 0,
-      }
-    },
-    measure_occlusions: {
-      type: bool,
-      default_value: false,
-      description: "@mfoumy plz help.",
-      read_only: True,
-    },
-    measured_depth_offset_radius: {
-      type: double,
-      default_value: 0.01,
-      description: "@mfoumy plz help.",
-      validation: {
-        gt<>: 0.0,
-      }
-    },
-    measured_occlusion_radius: {
-      type: double,
-      default_value: 0.01,
-      description: "@mfoumy plz help.",
-      validation: {
-        gt<>: 0.0,
-      }
-    },
-    measured_occlusion_threshold: {
-      type: double,
-      default_value: 0.03,
-      description: "@mfoumy plz help.",
-      validation: {
-        gt<>: 0.0,
-      }
-    },
-    model_occlusion: {
-      type: bool,
-      default_value: false,
-      description: "@mfoumy plz help.",
-    },
-    modeled_depth_offset_radius: {
-      type: double,
-      default_value: 0.01,
-      description: "@mfoumy plz help.",
-      validation: {
-        gt<>: 0.0,
-      }
-    },
-    modeled_occlusion_radius: {
-      type: double,
-      default_value: 0.01,
-      description: "@mfoumy plz help.",
-      validation: {
-        gt<>: 0.0,
-      }
-    },
-    modeled_occlusion_threshold: {
-      type: double,
-      default_value: 0.03,
-      description: "@mfoumy plz help.",
-      validation: {
-        gt<>: 0.0,
-      }
-    }
-  }
+        gt_eq<>: 1
 
-  use_texture_modality: {
-      type: bool,
-      default_value: false,
-      description: "@mfoumy plz help.",
-      read_only: true,
-  }
+    min_n_unoccluded_points:
+      type: int
+      default_value: 0
+      description: '@mfoumy plz help.'
+      validation:
+        gt_eq<>: 0
 
-  texture_modality: {
-    descriptor_type_name: {
-      type: string,
-      default_value: "ORB",
-      description: "@mfoumy plz help.",
-      validation: {
-        one_of<>: [["BRISK", "DAISY", "FREAK", "SIFT", "ORB", "ORB_CUDA"]],
-      }
-    },
+    measure_occlusions:
+      type: bool
+      default_value: false
+      description: '@mfoumy plz help.'
+      read_only: true
 
-    focused_image_size: {
-      type: int,
-      default_value: 200,
-      description: "@mfoumy plz help.",
-      validation: {
-        gt<>: 0,
-      }
-    },
+    measured_depth_offset_radius:
+      type: double
+      default_value: 0.01
+      description: '@mfoumy plz help.'
+      validation:
+        gt<>: 0.0
 
-    descriptor_distance_threshold: {
-      type: double,
-      default_value: 0.7,
-      description: "@mfoumy plz help.",
-      validation: {
-        gt<>: 0.0,
-      }
-    },
+    measured_occlusion_radius:
+      type: double
+      default_value: 0.01
+      description: '@mfoumy plz help.'
+      validation:
+        gt<>: 0.0
 
-    tukey_norm_constant: {
-      type: double,
-      default_value: 20.0,
-      description: "@mfoumy plz help.",
-      validation: {
-        gt<>: 0.0,
-      }
-    },
+    measured_occlusion_threshold:
+      type: double
+      default_value: 0.03
+      description: '@mfoumy plz help.'
+      validation:
+        gt<>: 0.0
 
-    standard_deviations: {
-      type: double_array,
-      default_value: [15.0, 5.0],
-      description: "@mfoumy plz help.",
-      validation: {
-        not_empty<>: [],
-      }
-    },
+    model_occlusion:
+      type: bool
+      default_value: false
+      description: '@mfoumy plz help.'
 
-    max_keyframe_rotation_difference: {
-      type: double,
+    modeled_depth_offset_radius:
+      type: double
+      default_value: 0.01
+      description: '@mfoumy plz help.'
+      validation:
+        gt<>: 0.0
+
+    modeled_occlusion_radius:
+      type: double
+      default_value: 0.01
+      description: '@mfoumy plz help.'
+      validation:
+        gt<>: 0.0
+
+    modeled_occlusion_threshold:
+      type: double
+      default_value: 0.03
+      description: '@mfoumy plz help.'
+      validation:
+        gt<>: 0.0
+
+  use_texture_modality:
+    type: bool
+    default_value: false
+    description: '@mfoumy plz help.'
+    read_only: true
+
+  texture_modality:
+    descriptor_type_name:
+      type: string
+      default_value: ORB
+      description: '@mfoumy plz help.'
+      validation:
+        one_of<>: [[BRISK, DAISY, FREAK, SIFT, ORB, ORB_CUDA]]
+
+    focused_image_size:
+      type: int
+      default_value: 200
+      description: '@mfoumy plz help.'
+      validation:
+        gt<>: 0
+
+    descriptor_distance_threshold:
+      type: double
+      default_value: 0.7
+      description: '@mfoumy plz help.'
+      validation:
+        gt<>: 0.0
+
+    tukey_norm_constant:
+      type: double
+      default_value: 20.0
+      description: '@mfoumy plz help.'
+      validation:
+        gt<>: 0.0
+
+    standard_deviations:
+      type: double_array
+      default_value: [15.0, 5.0]
+      description: '@mfoumy plz help.'
+      validation:
+        not_empty<>: []
+
+    max_keyframe_rotation_difference:
+      type: double
       # default value based on 10.0 * pi / 180.0;
-      default_value: 0.174532925,
-      description: "@mfoumy plz help.",
-      validation: {
-        gt<>: 0.0,
-      }
-    },
+      default_value: 0.174532925
+      description: '@mfoumy plz help.'
+      validation:
+        gt<>: 0.0
 
-    max_keyframe_age: {
-      type: int,
-      default_value: 100,
-      description: "@mfoumy plz help.",
-      validation: {
-        gt<>: 0,
-      }
-    },
+    max_keyframe_age:
+      type: int
+      default_value: 100
+      description: '@mfoumy plz help.'
+      validation:
+        gt<>: 0
 
-    n_keyframes: {
-      type: int,
-      default_value: 1,
-      description: "@mfoumy plz help.",
-      validation: {
-        gt_eq<>: 1,
-      }
-    },
+    n_keyframes:
+      type: int
+      default_value: 1
+      description: '@mfoumy plz help.'
+      validation:
+        gt_eq<>: 1
 
-    orb_n_features: {
-      type: int,
-      default_value: 300,
-      description: "@mfoumy plz help.",
-      validation: {
-        gt<>: 0,
-      }
-    },
-    orb_scale_factor: {
-      type: double,
-      default_value: 1.2,
-      description: "@mfoumy plz help.",
-      validation: {
-        gt<>: 0.0,
-      }
-    },
-    orb_n_levels: {
-      type: int,
-      default_value: 3,
-      description: "@mfoumy plz help.",
-      validation: {
-        gt<>: 0,
-      }
-    },
-    brisk_threshold: {
-      type: int,
-      default_value: 25,
-      description: "@mfoumy plz help.",
-      validation: {
-        gt<>: 0,
-      }
-    },
-    brisk_octave: {
-      type: int,
-      default_value: 3,
-      description: "@mfoumy plz help.",
-      validation: {
-        gt<>: 0,
-      }
-    },
-    brisk_pattern_scale: {
-      type: double,
-      default_value: 0.6,
-      description: "@mfoumy plz help.",
-      validation: {
-        gt<>: 0.0,
-      }
-    },
-    daisy_radius: {
-      type: double,
-      default_value: 7.0,
-      description: "@mfoumy plz help.",
-      validation: {
-        gt<>: 0.0,
-      }
-    },
-    daisy_q_radius: {
-      type: int,
-      default_value: 3,
-      description: "@mfoumy plz help.",
-      validation: {
-        gt<>: 0,
-      }
-    },
-    daisy_q_theta: {
-      type: int,
-      default_value: 4,
-      description: "@mfoumy plz help.",
-      validation: {
-        gt<>: 0,
-      }
-    },
-    daisy_q_hist: {
-      type: int,
-      default_value: 8,
-      description: "@mfoumy plz help.",
-      validation: {
-        gt<>: 0,
-      }
-    },
-    freak_orientation_normalized: {
-      type: bool,
-      default_value: true,
-      description: "@mfoumy plz help.",
-    },
-    freak_scale_normalized: {
-      type: bool,
-      default_value: true,
-      description: "@mfoumy plz help.",
-    },
-    freak_pattern_scale: {
-      type: double,
-      default_value: 18.0,
-      description: "@mfoumy plz help.",
-      validation: {
-        gt<>: 0.0,
-      }
-    },
-    freak_n_octaves: {
-      type: int,
-      default_value: 4,
-      description: "@mfoumy plz help.",
-      validation: {
-        gt<>: 0,
-      }
-    },
-    sift_n_features: {
-      type: int,
-      default_value: 0,
-      description: "@mfoumy plz help.",
-      validation: {
-        gt_eq<>: 0,
-      }
-    },
-    sift_n_octave_layers: {
-      type: int,
-      default_value: 5,
-      description: "@mfoumy plz help.",
-      validation: {
-        gt<>: 0,
-      }
-    },
-    sift_contrast_threshold: {
-      type: double,
-      default_value: 0.04,
-      description: "@mfoumy plz help.",
-      validation: {
-        gt<>: 0.0,
-      }
-    },
-    sift_edge_threshold: {
-      type: double,
-      default_value: 10.0,
-      description: "@mfoumy plz help.",
-      validation: {
-        gt<>: 0.0,
-      }
-    },
-    sift_sigma: {
-      type: double,
-      default_value: 0.7,
-      description: "@mfoumy plz help.",
-      validation: {
-        gt<>: 0.0,
-      }
-    },
-    measure_occlusions: {
-      type: bool,
-      default_value: false,
-      description: "@mfoumy plz help.",
-      read_only: True,
-    },
-    measured_occlusion_radius: {
-      type: double,
-      default_value: 0.01,
-      description: "@mfoumy plz help.",
-      validation: {
-        gt<>: 0.0,
-      }
-    },
-    measured_occlusion_threshold: {
-      type: double,
-      default_value: 0.03,
-      description: "@mfoumy plz help.",
-      validation: {
-        gt<>: 0.0,
-      }
-    },
-    model_occlusion: {
-      type: bool,
-      default_value: false,
-      description: "@mfoumy plz help.",
-      read_only: True,
-    },
-    modeled_occlusion_radius: {
-      type: double,
-      default_value: 0.01,
-      description: "@mfoumy plz help.",
-      validation: {
-        gt<>: 0.0,
-      }
-    },
-    modeled_occlusion_threshold: {
-      type: double,
-      default_value: 0.03,
-      description: "@mfoumy plz help.",
-      validation: {
-        gt<>: 0.0,
-      }
-    },
-  }
+    orb_n_features:
+      type: int
+      default_value: 300
+      description: '@mfoumy plz help.'
+      validation:
+        gt<>: 0
+
+    orb_scale_factor:
+      type: double
+      default_value: 1.2
+      description: '@mfoumy plz help.'
+      validation:
+        gt<>: 0.0
+
+    orb_n_levels:
+      type: int
+      default_value: 3
+      description: '@mfoumy plz help.'
+      validation:
+        gt<>: 0
+
+    brisk_threshold:
+      type: int
+      default_value: 25
+      description: '@mfoumy plz help.'
+      validation:
+        gt<>: 0
+
+    brisk_octave:
+      type: int
+      default_value: 3
+      description: '@mfoumy plz help.'
+      validation:
+        gt<>: 0
+
+    brisk_pattern_scale:
+      type: double
+      default_value: 0.6
+      description: '@mfoumy plz help.'
+      validation:
+        gt<>: 0.0
+
+    daisy_radius:
+      type: double
+      default_value: 7.0
+      description: '@mfoumy plz help.'
+      validation:
+        gt<>: 0.0
+
+    daisy_q_radius:
+      type: int
+      default_value: 3
+      description: '@mfoumy plz help.'
+      validation:
+        gt<>: 0
+
+    daisy_q_theta:
+      type: int
+      default_value: 4
+      description: '@mfoumy plz help.'
+      validation:
+        gt<>: 0
+
+    daisy_q_hist:
+      type: int
+      default_value: 8
+      description: '@mfoumy plz help.'
+      validation:
+        gt<>: 0
+
+    freak_orientation_normalized:
+      type: bool
+      default_value: true
+      description: '@mfoumy plz help.'
+
+    freak_scale_normalized:
+      type: bool
+      default_value: true
+      description: '@mfoumy plz help.'
+
+    freak_pattern_scale:
+      type: double
+      default_value: 18.0
+      description: '@mfoumy plz help.'
+      validation:
+        gt<>: 0.0
+
+    freak_n_octaves:
+      type: int
+      default_value: 4
+      description: '@mfoumy plz help.'
+      validation:
+        gt<>: 0
+
+    sift_n_features:
+      type: int
+      default_value: 0
+      description: '@mfoumy plz help.'
+      validation:
+        gt_eq<>: 0
+
+    sift_n_octave_layers:
+      type: int
+      default_value: 5
+      description: '@mfoumy plz help.'
+      validation:
+        gt<>: 0
+
+    sift_contrast_threshold:
+      type: double
+      default_value: 0.04
+      description: '@mfoumy plz help.'
+      validation:
+        gt<>: 0.0
+
+    sift_edge_threshold:
+      type: double
+      default_value: 10.0
+      description: '@mfoumy plz help.'
+      validation:
+        gt<>: 0.0
+
+    sift_sigma:
+      type: double
+      default_value: 0.7
+      description: '@mfoumy plz help.'
+      validation:
+        gt<>: 0.0
+
+    measure_occlusions:
+      type: bool
+      default_value: false
+      description: '@mfoumy plz help.'
+      read_only: true
+
+    measured_occlusion_radius:
+      type: double
+      default_value: 0.01
+      description: '@mfoumy plz help.'
+      validation:
+        gt<>: 0.0
+
+    measured_occlusion_threshold:
+      type: double
+      default_value: 0.03
+      description: '@mfoumy plz help.'
+      validation:
+        gt<>: 0.0
+
+    model_occlusion:
+      type: bool
+      default_value: false
+      description: '@mfoumy plz help.'
+      read_only: true
+
+    modeled_occlusion_radius:
+      type: double
+      default_value: 0.01
+      description: '@mfoumy plz help.'
+      validation:
+        gt<>: 0.0
+
+    modeled_occlusion_threshold:
+      type: double
+      default_value: 0.03
+      description: '@mfoumy plz help.'
+      validation:
+        gt<>: 0.0
