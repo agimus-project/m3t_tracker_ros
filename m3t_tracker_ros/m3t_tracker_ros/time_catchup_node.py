@@ -36,8 +36,7 @@ class TimeCatchupNode(TrackerNodeBase):
         buffer with a counter to store incoming images."""
         super().__init__(node_name="m3t_time_catchup_node", **kwargs)
 
-        # Initial queue size
-        self._image_buffer = [ImageQueueData()] * 30
+        self._image_buffer = []
         self._buffer_cnt = 0
 
     def _image_data_cb(
@@ -80,7 +79,7 @@ class TimeCatchupNode(TrackerNodeBase):
             self._image_buffer[self._buffer_cnt] = im_data
         # Expand it only if needed
         else:
-            self._image_buffer.append(self._buffer_cnt)
+            self._image_buffer.append(im_data)
         self._buffer_cnt += 1
 
     def _detection_data_cb(
@@ -100,7 +99,7 @@ class TimeCatchupNode(TrackerNodeBase):
             return
 
         if self._check_image_time_too_new(
-            self._tracked_objects, self._image_buffer[0].camera_header
+            detections, self._image_buffer[0].camera_header
         ):
             self.get_logger().warn(
                 "Time difference between detections and first image in the buffer "
@@ -109,7 +108,7 @@ class TimeCatchupNode(TrackerNodeBase):
             return
 
         if self._check_image_time_too_old(
-            self._tracked_objects, self._image_buffer[self._buffer_cnt].camera_header
+            detections, self._image_buffer[self._buffer_cnt - 1].camera_header
         ):
             self.get_logger().warn(
                 "Time difference between detections and last image in the buffer "
@@ -124,9 +123,7 @@ class TimeCatchupNode(TrackerNodeBase):
             im_data = self._image_buffer[i]
 
             # Check
-            if not self._check_image_time_ok(
-                self._tracked_objects, im_data.camera_header
-            ):
+            if not self._check_image_time_ok(detections, im_data.camera_header):
                 skipped_images += 1
                 continue
 
@@ -168,7 +165,7 @@ class TimeCatchupNode(TrackerNodeBase):
         vision_info.method += "-M3T-time-compensated"
 
         self._detection_pub.publish(tracked_objects)
-        self._vision_info_pub(vision_info)
+        self._vision_info_pub.publish(vision_info)
 
 
 def main() -> None:

@@ -84,7 +84,7 @@ def launch_setup(
         parameters=[
             {
                 "dataset_path": tmp_data_path.as_posix(),
-                "tracked_objects": ["global", object_class_id],
+                "tracked_objects": [object_class_id],
                 "region_modality.model_occlusion": True,
                 "region_modality.learning_rate_f": 0.5,
                 "region_modality.learning_rate_b": 0.5,

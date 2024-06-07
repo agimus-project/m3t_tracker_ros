@@ -216,9 +216,11 @@ class TrackerNodeBase(Node):
             # Each pixel is a depth (along the camera Z axis) in meters.
             # ROS 2 topic echo shows, clearly 16UC1, with depth scale 16
             # ICG expects a CV_16UC1.
-            # encoding = "passthrough" if depth_image.encoding == "16UC1" else "16UC1"
-            # Somehow not always "16C1" in the message field means to be correct value
-            image_depth = self._cvb.imgmsg_to_cv2(depth_image, "16UC1")
+            encoding = "passthrough" if depth_image.encoding == "16UC1" else "16UC1"
+            image_depth = self._cvb.imgmsg_to_cv2(depth_image, encoding)
+            # pym3t type caster does not accept non-recasted uint16 when using ``passthrough``
+            if encoding == "passthrough":
+                image_depth = image_depth.astype(np.uint16)
         else:
             transform_depth = None
             intrinsics_depth = None
@@ -344,7 +346,7 @@ class TrackerNodeBase(Node):
         """Checks timestamps of all detections to see if they are within time window
         for the tracker to properly recover and track objects.
 
-        :param **kwargs: See ``self._detection_time_delta``.
+        :param *args: See ``self._detection_time_delta``.
         :return: Indication if the tracker will be able to recover and track the objects.
         :rtype: bool
         """
@@ -355,23 +357,23 @@ class TrackerNodeBase(Node):
         """Checks timestamps of all detections to see if the image is not too old for
         the tracker to properly recover and track them.
 
-        :param **kwargs: See ``self._detection_time_delta``.
+        :param *args: See ``self._detection_time_delta``.
         :return: True if image is too old, false if it is ok or newer.
         :rtype: bool
         """
         delta = self._params.detection_to_image_time_slop * CONVERSION_CONSTANT
         return any(diff > delta for diff in self._detection_time_delta(*args))
 
-    def _check_image_time_too_new(self, kwargs) -> bool:
+    def _check_image_time_too_new(self, *args) -> bool:
         """Checks timestamps of all detections to see if the image is not too new for
         the tracker to properly recover and track them.
 
-        :param **kwargs: See ``self._detection_time_delta``.
+        :param *args: See ``self._detection_time_delta``.
         :return: True if image is too new, false if it is ok or older.
         :rtype: bool
         """
         delta = self._params.detection_to_image_time_slop * CONVERSION_CONSTANT
-        return any(diff > delta for diff in self._detection_time_delta(kwargs))
+        return any(diff > delta for diff in self._detection_time_delta(*args))
 
     def _detection_time_delta(
         self, detections: Detection2DArray, image_header: Header
