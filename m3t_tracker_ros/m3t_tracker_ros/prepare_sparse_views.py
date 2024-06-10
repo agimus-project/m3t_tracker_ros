@@ -141,15 +141,11 @@ def process_meshes() -> None:
         body.SetUp()
 
         # Generate Region Model and save it in ``.m3t_rmb`` file
-        pym3t.RegionModel(
-            object_name + "_region_model", body, output_m3t_rmb_path
-        ).SetUp()
+        pym3t.RegionModel(object_name, body, output_m3t_rmb_path).SetUp()
 
         if args.use_depth:
             # Generate Region Model and save it in ``.m3t_dmb`` file
-            pym3t.DepthModel(
-                object_name + "_region_model", body, output_m3t_dmb_path
-            ).SetUp()
+            pym3t.DepthModel(object_name, body, output_m3t_dmb_path).SetUp()
 
     print()  # Empty line
     depth_info = ", '.m3t_dmb'" if args.use_depth else ""
