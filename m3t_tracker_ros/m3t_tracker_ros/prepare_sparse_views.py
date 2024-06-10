@@ -37,7 +37,7 @@ def parse_script_input() -> argparse.Namespace:
         description="Convert any mesh to ``.obj`` format and create sparse views for it.",
     )
     parser.add_argument(
-        "-p",
+        "-i",
         "--input-path",
         dest="input_path",
         type=str,
@@ -81,6 +81,60 @@ def parse_script_input() -> argparse.Namespace:
         type=str,
         nargs="+",
         help="Only convert objects with filtered names. Passed as a list separated with spaces.",
+    )
+    parser.add_argument(
+        "--overwrite",
+        dest="overwrite",
+        action="store_true",
+        help="Overwrites previously created files.",
+    )
+    parser.add_argument(
+        "--use-random-seed",
+        dest="use_random_seed",
+        action="store_true",
+        help="TODO documentation.",
+    )
+    parser.add_argument(
+        "--sphere-radius",
+        dest="sphere_radius",
+        type=float,
+        default=0.8,
+        help="TODO documentation.",
+    )
+    parser.add_argument(
+        "--stride-depth-offset",
+        dest="stride_depth_offset",
+        type=float,
+        default=0.002,
+        help="TODO documentation.",
+    )
+    parser.add_argument(
+        "--max-radius-depth-offset",
+        dest="max_radius_depth_offset",
+        type=float,
+        default=0.05,
+        help="TODO documentation.",
+    )
+    parser.add_argument(
+        "--n-divides",
+        dest="n_divides",
+        type=int,
+        default=4,
+        help="TODO documentation.",
+    )
+    parser.add_argument(
+        "--n-points",
+        dest="n_points",
+        type=int,
+        default=200,
+        help="TODO documentation.",
+    )
+    parser.add_argument(
+        "--image-size",
+        dest="image_size",
+        type=int,
+        default=2000,
+        help="TODO documentation.",
     )
 
     return parser.parse_args()
@@ -126,6 +180,11 @@ def process_meshes() -> None:
         output_m3t_rmb_path = output_path + ".m3t_rmb"  # M3T Region Model Binary
         output_m3t_dmb_path = output_path + ".m3t_dmb"  # M3T Depth Model Binary
 
+        for file in [output_obj_path, output_m3t_rmb_path, output_m3t_dmb_path]:
+            f = pathlib.Path(file)
+            if f.is_file() and args.overwrite:
+                f.unlink()
+
         # Convert given mesh file to ``.obj`` file format
         mesh = trimesh.load(input_file, force="mesh").apply_scale(args.mesh_scale)
         mesh.export(output_obj_path)
@@ -141,11 +200,33 @@ def process_meshes() -> None:
         body.SetUp()
 
         # Generate Region Model and save it in ``.m3t_rmb`` file
-        pym3t.RegionModel(object_name, body, output_m3t_rmb_path).SetUp()
+        pym3t.RegionModel(
+            object_name,
+            body,
+            output_m3t_rmb_path,
+            args.sphere_radius,
+            args.n_divides,
+            args.n_points,
+            args.max_radius_depth_offset,
+            args.stride_depth_offset,
+            args.use_random_seed,
+            args.image_size,
+        ).SetUp()
 
         if args.use_depth:
             # Generate Region Model and save it in ``.m3t_dmb`` file
-            pym3t.DepthModel(object_name, body, output_m3t_dmb_path).SetUp()
+            pym3t.DepthModel(
+                object_name,
+                body,
+                output_m3t_dmb_path,
+                args.sphere_radius,
+                args.n_divides,
+                args.n_points,
+                args.max_radius_depth_offset,
+                args.stride_depth_offset,
+                args.use_random_seed,
+                args.image_size,
+            ).SetUp()
 
     print()  # Empty line
     depth_info = ", '.m3t_dmb'" if args.use_depth else ""
