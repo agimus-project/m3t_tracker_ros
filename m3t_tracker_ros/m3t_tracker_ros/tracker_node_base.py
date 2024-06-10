@@ -197,9 +197,9 @@ class TrackerNodeBase(Node):
             if not self._buffer.can_transform(
                 depth_image.header.frame_id, color_image.header.frame_id, image_ts
             ):
-                self.get_logger().error(
-                    f"No transformation between frames '{depth_image.header.frame_id}' "
-                    f"and '{color_image.header.frame_id}'!",
+                self.get_logger().warn(
+                    f"Failed to transform from frame '{depth_image.header.frame_id}' "
+                    f"to '{color_image.header.frame_id}'!",
                     throttle_duration_sec=5.0,
                 )
                 return
