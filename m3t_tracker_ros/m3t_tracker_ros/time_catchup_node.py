@@ -94,6 +94,9 @@ class TimeCatchupNode(TrackerNodeBase):
         :param detections: Received vision info message.
         :type detections: vision_msgs.msg.VisionInfo
         """
+
+        self._refresh_parameters()
+
         # No images to refine. Do not compensate in the time.
         if self._buffer_cnt == 0:
             return

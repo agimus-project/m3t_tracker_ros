@@ -53,6 +53,9 @@ class RealTimeTrackerNode(TrackerNodeBase):
             None if not used.
         :type depth2color_pose: Union[None, npt.NDArray[np.float32]]
         """
+
+        self._refresh_parameters()
+
         # Skip if no detections can be refined
         if self._tracked_objects is None:
             return

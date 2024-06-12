@@ -292,49 +292,28 @@ class SpecializedTracker:
             "n_update_iterations"
         ]
 
-        def _update_optimizer(optimizer: pym3t.Optimizer) -> None:
-            # Update optimizer config
-            optimizer = self._update_object_config(optimizer, self._params["optimizer"])
-
-            modality_types = ["region_modality", "depth_modality", "texture_modality"]
-
-            # Iterate over possible modalities
-            for idx, modality in enumerate(optimizer.root_link.modality):
-                for modality_type in modality_types:
-                    if modality_type in modality.name:
-                        mod_params = self._params[modality_type]
-                        optimizer.root_link.modality[idx] = self._update_object_config(
-                            optimizer.root_link.modality[idx],
-                            mod_params,
-                        )
-                        if modality_type == "texture_modality":
-                            # Parameter ``descriptor_type`` is exposed as string
-                            # and has to be TextureModality::DescriptorType enum
-                            optimizer.root_link.modality[idx].descriptor_type = getattr(
-                                pym3t.DescriptorType,
-                                self._params["texture_modality"][
-                                    "descriptor_type_name"
-                                ],
-                            )
-                        continue
-
-        # Loop over keys and indexes to explicitly modify elements of dictionary and lists
-        for class_id in self._preloaded_optimizers.keys():
-            for i in len(self._preloaded_optimizers[class_id]):
-                optimizer = self._preloaded_optimizers[class_id][i]
-                self._preloaded_optimizers[class_id][i] = _update_optimizer(optimizer)
-
-        # Update optimizers being a part of the tracker
         for optimizer in self._tracker.optimizers:
-            # Decouple optimizer from the tracker
-            self._tracker.DeleteOptimizer(optimizer.name)
-            # Update its params
-            optimizer = _update_optimizer(optimizer)
-            # Reattach it
-            self._tracker.AddOptimizer(optimizer)
+            optimizer_params = self._params["optimizer"]
+            self._update_object_config(optimizer, optimizer_params)
+            optimizer.SetUp()
 
-        if not self._tracker.SetUp():
-            raise RuntimeError("Failed to initialize the tracker!")
+        modality_types = ["region_modality", "depth_modality", "texture_modality"]
+        for modality in self._tracker.modalities:
+            for modality_type in modality_types:
+                if modality_type in modality.name:
+                    modality_params = self._params[modality_type]
+                    self._update_object_config(modality, modality_params)
+                    if modality_type == "texture_modality":
+                        # Parameter ``descriptor_type`` is exposed as string
+                        # and has to be TextureModality::DescriptorType enum
+                        modality.descriptor_type = getattr(
+                            pym3t.DescriptorType,
+                            self._params["texture_modality"]["descriptor_type_name"],
+                        )
+                    modality.SetUp()
+                    continue
+
+        self._tracker.SetUp(set_up_all_objects=False)
 
     def _image_data_to_intrinsics(
         self, camera_k: npt.NDArray[np.float64], im_shape: Tuple[int]
