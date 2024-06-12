@@ -3,6 +3,7 @@ import numpy as np
 import numpy.typing as npt
 from typing import List, Union
 
+from rclpy.callback_groups import MutuallyExclusiveCallbackGroup
 from rclpy.node import Node
 from rclpy.time import Time, CONVERSION_CONSTANT
 
@@ -42,6 +43,9 @@ class TrackerNodeBase(Node):
         :raises Exception: Initialization of the generate_parameter_library object failed.
         """
         super().__init__(**kwargs)
+
+        # Expect the callbacks to work synchronous even with multi-threaded executor
+        self.group = MutuallyExclusiveCallbackGroup()
 
         try:
             self._param_listener = m3t_tracker_ros.ParamListener(self)

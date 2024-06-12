@@ -27,7 +27,7 @@ To launch the demo you need two terminal windows. In the first window run:
 ```bash
 ros2 launch m3t_tracker_examples manual_initialization_demo.launch.py mesh_file:=<global path to mesh file>
 ```
-This will start M3T tracker, subscribe to your webcam and open RViz window.
+This will generate spars representation of your object, start M3T tracker, subscribe to your webcam and open RViz window.
 For better accuracy you can modify `camera_fov` parameter of the launch file.
 
 In the second terminal run:
@@ -52,6 +52,8 @@ Default values of this script match configuration of the meshes used by [HappyPo
 
 
 ## ROS API
+
+Both [real_time_tracker_node](./m3t_tracker_ros/m3t_tracker_ros/real_time_tracker_node.py) and [time_catchup_node](./m3t_tracker_ros/m3t_tracker_ros/time_catchup_node.py) provide the same API with the same ROS parameters. Refer to documentation below for more details.
 
 ### Publishers
 
@@ -97,6 +99,6 @@ Default values of this script match configuration of the meshes used by [HappyPo
 
 ### Parameters
 
-Parameters are generated with [generate_parameter_library](https://github.com/PickNikRobotics/generate_parameter_library). Currently, no automatic documentation generation is set up. Refer to [m3t_tracker_ros_parameters.yaml](./m3t_tracker_ros/m3t_tracker_ros_parameters.yaml) for more information.
+Parameters are generated with [generate_parameter_library](https://github.com/PickNikRobotics/generate_parameter_library). Currently, no automatic documentation generation is set up. Refer to [m3t_tracker_ros_parameters.yaml](./m3t_tracker_ros/m3t_tracker_ros/m3t_tracker_ros_parameters.yaml) for more information.
 
 Note that some of the parameters are possible to tune in the runtime. Refer to the code generation YAML file to see which of them are available.
