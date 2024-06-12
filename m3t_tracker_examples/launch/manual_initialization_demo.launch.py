@@ -116,6 +116,7 @@ def launch_setup(
         package="happypose_marker_publisher",
         executable="marker_publisher",
         output="screen",
+        namespace="m3t_tracker",
         parameters=[
             {
                 "filename_format": "${class_id}.obj",
@@ -125,11 +126,6 @@ def launch_setup(
                 "mesh.scale": 1.0,
                 "mesh.color_overwrite": [0.5, 1.0, 0.5, 1.0],
             }
-        ],
-        remappings=[
-            ("/reference/detections", "/m3t_tracker/detections"),
-            ("/reference/vision_info", "/m3t_tracker/vision_info"),
-            ("/marker_publisher_node/markers", "/m3t_tracker/markers"),
         ],
     )
 
