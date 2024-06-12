@@ -44,7 +44,13 @@ class SpecializedTracker:
         self._pattern = re.compile(self._params["class_id_regex"])
 
         def _get_inner_class_id(outer_class_id: "str") -> str:
-            raw_class_id = self._pattern.findall(outer_class_id)[0]
+            matches = self._pattern.findall(outer_class_id)
+            if len(matches) == 0:
+                raise RuntimeError(
+                    f"Failed to find match with '{self._params['class_id_regex']}' "
+                    f"in the class id string '{outer_class_id}'!"
+                )
+            raw_class_id = matches[0]
             return self._prefix + raw_class_id + self._postfix
 
         # Create a map to convert received class id to the their inner names
