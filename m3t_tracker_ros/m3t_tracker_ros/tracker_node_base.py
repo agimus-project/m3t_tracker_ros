@@ -361,7 +361,7 @@ class TrackerNodeBase(Node):
                 # Additionally change frame in which those objects are represented
                 detection_header = tracked_objects.detections[i].header
                 transform = self._buffer.lookup_transform_full(
-                    stationary_frame,
+                    camera_header.frame_id,
                     camera_stamp,
                     detection_header.frame_id,
                     Time.from_msg(detection_header.stamp),
