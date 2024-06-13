@@ -356,10 +356,12 @@ class TrackerNodeBase(Node):
             )
 
             camera_stamp = Time.from_msg(camera_header.stamp)
-            for i in range(len(tracked_objects.detections)):
+
+            def _transform_frame(detection: Detection2D) -> Detection2D:
                 # Transform poses of the objects to account for a moving camera
                 # Additionally change frame in which those objects are represented
-                detection_header = tracked_objects.detections[i].header
+                # Update their poses
+                detection_header = detection.header
                 transform = self._buffer.lookup_transform_full(
                     camera_header.frame_id,
                     camera_stamp,
@@ -367,11 +369,35 @@ class TrackerNodeBase(Node):
                     Time.from_msg(detection_header.stamp),
                     stationary_frame,
                 )
-                # Update their poses
-                tracked_objects.detections[i].results[0].pose.pose = do_transform_pose(
-                    tracked_objects.detections[i].results[0].pose.pose, transform
+                return do_transform_pose(detection.results[0].pose.pose, transform)
+
+            def _check_transform_and_log(detection: Detection2D) -> bool:
+                detection_header = detection.header
+                can_transform = self._buffer.can_transform_full(
+                    camera_header.frame_id,
+                    camera_stamp,
+                    detection_header.frame_id,
+                    Time.from_msg(detection_header.stamp),
+                    stationary_frame,
                 )
+                if not can_transform:
+                    self.get_logger().warn(
+                        f"No transformation between frames '{camera_header.frame_id}' "
+                        f"and '{detection_header.frame_id}' with fixed frame "
+                        f"'{stationary_frame}'. Object with id '{detection.id}' will be "
+                        "skipped.",
+                        throttle_duration_sec=2.0,
+                    )
+                return can_transform
+
+            tracked_objects.detections = [
+                _transform_frame(detection)
+                for detection in tracked_objects.detections
+                if _check_transform_and_log(detection)
+            ]
+
             tracked_objects.header.frame_id = camera_header.frame_id
+            tracked_objects.header.stamp = camera_header.stamp
 
             self._tracker.update_tracked_objects(get_tracked_objects(tracked_objects))
 
