@@ -66,7 +66,7 @@ class TrackerNodeBase(Node):
 
         # Transform buffers
         self._buffer = Buffer()
-        self._listener = TransformListener(self._buffer, self)
+        self._listener = TransformListener(self._buffer, self, spin_thread=True)
 
         # Color subscribers
         filter_subscribers = [
