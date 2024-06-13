@@ -369,7 +369,10 @@ class TrackerNodeBase(Node):
                     Time.from_msg(detection_header.stamp),
                     stationary_frame,
                 )
-                return do_transform_pose(detection.results[0].pose.pose, transform)
+                detection.results[0].pose.pose = do_transform_pose(
+                    detection.results[0].pose.pose, transform
+                )
+                return detection
 
             def _check_transform_and_log(detection: Detection2D) -> bool:
                 detection_header = detection.header
