@@ -37,7 +37,7 @@ class TrackerNodeBase(Node):
 
     __metaclass__ = abc.ABCMeta
 
-    def __init__(self, **kwargs) -> None:
+    def __init__(self, spin_tf_in_thread: bool = True, **kwargs) -> None:
         """Initializes ROS node object, creates synchronized subscribers and publisher.
 
         :raises Exception: Initialization of the generate_parameter_library object failed.
@@ -66,7 +66,9 @@ class TrackerNodeBase(Node):
 
         # Transform buffers
         self._buffer = Buffer()
-        self._listener = TransformListener(self._buffer, self, spin_thread=True)
+        self._listener = TransformListener(
+            self._buffer, self, spin_thread=spin_tf_in_thread
+        )
 
         # Color subscribers
         filter_subscribers = [

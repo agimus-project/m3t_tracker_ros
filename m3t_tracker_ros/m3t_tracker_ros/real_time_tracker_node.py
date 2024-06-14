@@ -15,7 +15,7 @@ class RealTimeTrackerNode(TrackerNodeBase):
     Refines poses of detected objects every time it receives a new image.
     """
 
-    def __init__(self, **kwargs):
+    def __init__(self, *args, **kwargs) -> None:
         """Initializes base tracker node and creates
         variables used for real time tracking."""
         super().__init__(node_name="m3t_rt_tracker_node", **kwargs)

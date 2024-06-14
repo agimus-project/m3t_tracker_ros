@@ -39,6 +39,8 @@ class TimeCatchupNode(TrackerNodeBase):
         self._image_buffer = []
         self._buffer_cnt = 0
 
+        self.get_logger().info("Node started.")
+
     def _image_data_cb(
         self,
         camera_header: Header,
