@@ -60,14 +60,14 @@ class RealTimeTrackerNode(TrackerNodeBase):
         if self._tracked_objects is None:
             return
 
-        if not self._check_image_time_ok(self._tracked_objects, camera_header):
-            # Reset tracked objects to prevent the log from showing all the time
-            self._tracked_objects = None
-            self.get_logger().warn(
-                "Time difference between detections and the incoming "
-                "image is to big for it to recover!"
-            )
-            return
+        # if not self._check_image_time_ok(self._tracked_objects, camera_header):
+        #     # Reset tracked objects to prevent the log from showing all the time
+        #     self._tracked_objects = None
+        #     self.get_logger().warn(
+        #         "Time difference between detections and the incoming "
+        #         "image is to big for it to recover!"
+        #     )
+        #     return
 
         try:
             self._tracked_objects = self._perform_tracking_step(

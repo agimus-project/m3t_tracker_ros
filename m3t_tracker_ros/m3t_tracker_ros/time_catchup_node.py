@@ -103,23 +103,23 @@ class TimeCatchupNode(TrackerNodeBase):
         if self._buffer_cnt == 0:
             return
 
-        if self._check_image_time_too_new(
-            detections, self._image_buffer[0].camera_header
-        ):
-            self.get_logger().warn(
-                "Time difference between detections and first image in the buffer "
-                "is too big. Tracker won't be able to start tracking!"
-            )
-            return
+        # if self._check_image_time_too_new(
+        #     detections, self._image_buffer[0].camera_header
+        # ):
+        #     self.get_logger().warn(
+        #         "Time difference between detections and first image in the buffer "
+        #         "is too big. Tracker won't be able to start tracking!"
+        #     )
+        #     return
 
-        if self._check_image_time_too_old(
-            detections, self._image_buffer[self._buffer_cnt - 1].camera_header
-        ):
-            self.get_logger().warn(
-                "Time difference between detections and last image in the buffer "
-                "is too big. All of the images are too old!"
-            )
-            return
+        # if self._check_image_time_too_old(
+        #     detections, self._image_buffer[self._buffer_cnt - 1].camera_header
+        # ):
+        #     self.get_logger().warn(
+        #         "Time difference between detections and last image in the buffer "
+        #         "is too big. All of the images are too old!"
+        #     )
+        #     return
 
         tracked_objects = detections
         skipped_images = 0
