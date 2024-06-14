@@ -106,7 +106,7 @@ class SpecializedTracker:
 
         # Cashed objects
         # Stores currently tracked object references
-        self._last_objects_order = List[TrackedObject]
+        self._last_objects_order = []  # List[TrackedObject]
         # Dict[str, str]
         self._known_objects = {}
 
