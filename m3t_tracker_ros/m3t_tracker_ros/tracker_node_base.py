@@ -211,7 +211,7 @@ class TrackerNodeBase(Node):
                 return
 
             depth_to_color = self._buffer.lookup_transform(
-                depth_image.header.frame_id, color_image.header.frame_id, image_ts
+                color_image.header.frame_id, depth_image.header.frame_id, image_ts
             ).transform
             # Set this pose to be the relative pose between the cameras
             transform_depth = transform_msg_to_matrix(depth_to_color)
