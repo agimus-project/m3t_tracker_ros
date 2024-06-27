@@ -24,7 +24,7 @@ class TrackedObject:
 
 class SpecializedTracker:
     """Wrapper on top of pym3t.Tracker class. Adds ability to dynamically add and remove
-    tracked objects with temporal cashing for performance.
+    tracked objects with temporal caching for performance.
     """
 
     def __init__(self, params: dict) -> None:
@@ -44,11 +44,32 @@ class SpecializedTracker:
         self._pattern = re.compile(self._params["class_id_regex"])
 
         def _get_inner_class_id(outer_class_id: "str") -> str:
+            """Converts Class ID representation from one used in the ROS messages to
+            a one matching the scheme used in file names loaded by M3T.
+            Example with YCBV object number 1:
+                ``outer_class_id``: ``ycbv-obj_000001``
+                ``class_id_regex``: ``^ycbv-(.*?)$``
+                ``filename_format``: ``my-prefix-${class_id}-my-postfix.${file_fmt}``
+            Regex extracts ``obj_000001`` from ``outer_class_id``.
+            Prefix is set to ``my-prefix-``
+            Postfix is set to ``-my-postfix``
+            Result is ``my-prefix-obj_000001-my-postfix``
+
+            :param outer_class_id: Class ID used in the ROS message.
+            :type outer_class_id: str
+            :raises RuntimeError: Filed to find instance of the regex pattern int the
+                outer_class_id.
+            :return: Extracted class ID from the ROS representation with appended postfix
+                and prefix
+            :rtype: str
+            """
             matches = self._pattern.findall(outer_class_id)
-            if len(matches) == 0:
+            if len(matches) != 1:
+                is_unique_text = " " if len(matches) == 0 else " unique "
                 raise RuntimeError(
-                    f"Failed to find match with '{self._params['class_id_regex']}' "
-                    f"in the class id string '{outer_class_id}'!"
+                    f"Failed to find{is_unique_text}match with "
+                    f"'{self._params['class_id_regex']}' "
+                    f"in the class ID string '{outer_class_id}'!"
                 )
             raw_class_id = matches[0]
             return self._prefix + raw_class_id + self._postfix
