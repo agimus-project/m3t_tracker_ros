@@ -1,8 +1,11 @@
+from pathlib import Path
+
 from setuptools import find_packages, setup
 
 from generate_parameter_library_py.setup_helper import generate_parameter_module
 
 package_name = "m3t_tracker_ros"
+project_source_dir = Path(__file__).parent
 
 module_name = "m3t_tracker_ros_parameters"
 yaml_file = "m3t_tracker_ros/m3t_tracker_ros_parameters.yaml"
@@ -26,7 +29,7 @@ setup(
             "share/ament_index/resource_index/packages",
             ["resource/prepare_sparse_views"],
         ),
-        ("share/" + package_name, ["package.xml"]),
+        (f"share/{package_name}", ["package.xml"]),
     ],
     install_requires=["setuptools"],
     zip_safe=True,

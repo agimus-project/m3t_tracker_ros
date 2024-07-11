@@ -243,7 +243,8 @@ m3t_tracker_ros:
     measure_occlusions:
       type: bool
       default_value: false
-      description: '@mfoumy plz help.'
+      description: Enables measuring of occlusions for region modality from depth sensor.
+        Requires ``use_depth`` param to be true.
       read_only: true
 
     measured_depth_offset_radius:
@@ -291,7 +292,7 @@ m3t_tracker_ros:
   use_depth_modality:
     type: bool
     default_value: false
-    description: '@mfoumy plz help.'
+    description: Enable use of depth modality. Requires ``use_depth`` param to be true.
     read_only: true
 
   depth_modality:
@@ -356,7 +357,7 @@ m3t_tracker_ros:
     measure_occlusions:
       type: bool
       default_value: false
-      description: '@mfoumy plz help.'
+      description: Enables occlusion measurement for depth modality.
       read_only: true
 
     measured_depth_offset_radius:
@@ -383,7 +384,7 @@ m3t_tracker_ros:
     model_occlusion:
       type: bool
       default_value: false
-      description: '@mfoumy plz help.'
+      description: Enables occlusion modeling for depth modality.
 
     modeled_depth_offset_radius:
       type: double
@@ -602,7 +603,8 @@ m3t_tracker_ros:
     measure_occlusions:
       type: bool
       default_value: false
-      description: '@mfoumy plz help.'
+      description: Enables measuring of occlusions for texture modality from depth sensor.
+        Requires ``use_depth`` param to be true.
       read_only: true
 
     measured_occlusion_radius:
@@ -622,7 +624,7 @@ m3t_tracker_ros:
     model_occlusion:
       type: bool
       default_value: false
-      description: '@mfoumy plz help.'
+      description: Enables occlusion modeling for texture modality.
       read_only: true
 
     modeled_occlusion_radius:
