@@ -58,7 +58,8 @@ def parse_script_input() -> argparse.Namespace:
         dest="mesh_format",
         type=str,
         default="ply",
-        help="Mesh file extension indicating what format to look for. [param is case sensitive].",
+        help="Mesh file extension indicating what format to look for. "
+        + "[param is case sensitive].",
     )
     parser.add_argument(
         "-s",
@@ -80,7 +81,8 @@ def parse_script_input() -> argparse.Namespace:
         dest="filter_objects",
         type=str,
         nargs="+",
-        help="Only convert objects with filtered names. Passed as a list separated with spaces.",
+        help="Only convert objects with filtered names. "
+        + "Passed as a list separated with spaces.",
     )
     parser.add_argument(
         "--overwrite",
@@ -92,49 +94,51 @@ def parse_script_input() -> argparse.Namespace:
         "--use-random-seed",
         dest="use_random_seed",
         action="store_true",
-        help="TODO documentation.",
+        help="If a random seed is used to sample points.",
     )
     parser.add_argument(
         "--sphere-radius",
         dest="sphere_radius",
         type=float,
         default=0.8,
-        help="TODO documentation.",
+        help="Distance from the object center to the center of a virtual camera.",
     )
     parser.add_argument(
         "--stride-depth-offset",
         dest="stride_depth_offset",
         type=float,
         default=0.002,
-        help="TODO documentation.",
+        help="Distance between points in meter that are used to calculate depth offsets.",
     )
     parser.add_argument(
         "--max-radius-depth-offset",
         dest="max_radius_depth_offset",
         type=float,
         default=0.05,
-        help="TODO documentation.",
+        help="Maximum radius in meter for the calculation of depth offsets that "
+        + "are used for occlusion handling.",
     )
     parser.add_argument(
         "--n-divides",
         dest="n_divides",
         type=int,
         default=4,
-        help="TODO documentation.",
+        help="Number of times an icosahedron is divided to generate viewpoints "
+        + "on a sphere. It thereby controls the number of template views.",
     )
     parser.add_argument(
         "--n-points",
         dest="n_points",
         type=int,
         default=200,
-        help="TODO documentation.",
+        help="Number of points that are sampled for each view.",
     )
     parser.add_argument(
         "--image-size",
         dest="image_size",
         type=int,
         default=2000,
-        help="TODO documentation.",
+        help="Size of images that are rendered for each view.",
     )
 
     return parser.parse_args()
