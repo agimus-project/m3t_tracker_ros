@@ -1,0 +1,39 @@
+<?xml version="1.0"?>
+<?xml-model href="http://download.ros.org/schema/package_format3.xsd" schematypens="http://www.w3.org/2001/XMLSchema"?>
+<package format="3">
+  <name>m3t_tracker_ros</name>
+  <version>0.0.0</version>
+  <description>M3T base 3D tracker for real time object tracking with HappyPose library</description>
+  <author email="krzysztof.wojciechowski@laas.fr">Krzysztof Wojciechowski</author>
+  <maintainer email="guilhem.saurel@laas.fr">Guilhem Saurel</maintainer>
+  <license>BSD</license>
+
+  <url type="website">https://gitlab.laas.fr/kwojciecho/m3t_tracker_ros</url>
+  <url type="bugtracker">https://gitlab.laas.fr/kwojciecho/m3t_tracker_ros/-/issues</url>
+  <url type="repository">https://gitlab.laas.fr/kwojciecho/m3t_tracker_ros</url>
+
+  <build_depend>generate_parameter_library</build_depend>
+  <build_depend>generate_parameter_library_py</build_depend>
+
+  <depend>cv_bridge</depend>
+  <depend>rclpy</depend>
+  <depend>tf2_ros</depend>
+  <depend>geometry_msgs</depend>
+  <depend>sensor_msgs</depend>
+  <depend>std_msgs</depend>
+  <depend>vision_msgs</depend>
+  <depend version_eq="4.4.0">python3-trimesh-pip</depend>
+  <depend version_eq="1.26.4">python3-numpy</depend>
+
+  <test_depend>python3-pytest</test_depend>
+  <test_depend>python3-mock</test_depend>
+  <test_depend>launch</test_depend>
+  <test_depend>launch_ros</test_depend>
+  <test_depend>launch_testing</test_depend>
+  <test_depend>launch_testing_ros</test_depend>
+  <test_depend>ros_testing</test_depend>
+
+  <export>
+    <build_type>ament_python</build_type>
+  </export>
+</package>
