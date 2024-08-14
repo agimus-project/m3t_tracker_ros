@@ -124,6 +124,7 @@ class TimeCatchupNode(TrackerNodeBase):
         tracked_objects = detections
         skipped_images = 0
         # Loop over saved images
+        update_detections = True
         for i in range(self._buffer_cnt):
             im_data = self._image_buffer[i]
 
@@ -141,8 +142,9 @@ class TimeCatchupNode(TrackerNodeBase):
                     im_data.depth_camera_k,
                     im_data.depth2color_pose,
                     tracked_objects,
-                    i == 0,
+                    update_detections,
                 )
+                update_detections = False
             except RuntimeError:
                 pass
 
