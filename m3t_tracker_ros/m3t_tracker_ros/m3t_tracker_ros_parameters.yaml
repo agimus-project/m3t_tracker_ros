@@ -35,6 +35,12 @@ m3t_tracker_ros:
     description: Delay [seconds] with which incoming messages can be synchronized.
     read_only: true
 
+  track_timeout:
+    type: double
+    default_value: 5.0
+    description: Time [seconds] of the track not being seen after which it is considered
+      too old and is discarded.
+
   detection_to_image_time_slop:
     type: double
     default_value: 0.1
