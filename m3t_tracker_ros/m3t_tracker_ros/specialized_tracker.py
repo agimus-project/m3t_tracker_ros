@@ -325,8 +325,7 @@ class SpecializedTracker:
                         assigned_optimizer.optimizer_name
                     )
                     optimizer = optimizers_map[assigned_optimizer.optimizer_name]
-                    # Disable tracking of a given object
-                    optimizer.root_link.body.body2world_pose = np.eye(4)
+                    optimizer.root_link.body.body2world_pose = self._disable_pose
                     logs.append(
                         ("info", f"Optimizer for track id: '{track_id}' timed out.")
                     )
