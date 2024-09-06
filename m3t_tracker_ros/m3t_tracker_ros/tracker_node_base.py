@@ -393,7 +393,9 @@ class TrackerNodeBase(Node):
                 get_tracked_objects(tracked_objects)
             )
             for severity, log_msg in logs:
-                if severity == "info":
+                if severity == "debug":
+                    self.get_logger().debug(log_msg)
+                elif severity == "info":
                     self.get_logger().info(log_msg)
                 elif severity == "warn":
                     self.get_logger().warn(log_msg)

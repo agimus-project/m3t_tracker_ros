@@ -39,6 +39,14 @@ class TimeCatchupNode(TrackerNodeBase):
         self._image_buffer = []
         self._buffer_cnt = 0
 
+        # Publishers
+        self._intermediate_detection_pub = self.create_publisher(
+            Detection2DArray, "m3t_tracker/intermediate/detections", 10
+        )
+        self._intermediate_vision_info_pub = self.create_publisher(
+            VisionInfo, "m3t_tracker/intermediate/vision_info", 10
+        )
+
         self.get_logger().info("Node started.")
 
     def _image_data_cb(
@@ -121,6 +129,9 @@ class TimeCatchupNode(TrackerNodeBase):
         #     )
         #     return
 
+        # Append info to the method that the poses are now refined with the tracker
+        vision_info.method += "-M3T-time-compensated"
+
         tracked_objects = detections
         skipped_images = 0
         # Loop over saved images
@@ -145,6 +156,16 @@ class TimeCatchupNode(TrackerNodeBase):
                     update_detections,
                 )
                 update_detections = False
+
+                header = Header(
+                    frame_id=im_data.camera_header.frame_id,
+                    stamp=self.get_clock().now().to_msg(),
+                )
+                tracked_objects.header = header
+                vision_info.header = header
+
+                self._intermediate_detection_pub.publish(tracked_objects)
+                self._intermediate_vision_info_pub.publish(vision_info)
             except RuntimeError:
                 pass
 
@@ -157,19 +178,6 @@ class TimeCatchupNode(TrackerNodeBase):
 
         # Reset the buffer counter
         self._buffer_cnt = 0
-
-        header = Header(
-            frame_id=im_data.camera_header.frame_id,
-            stamp=self.get_clock().now().to_msg(),
-        )
-
-        # Objects are now considered to be relevant at the time
-        # of the color image and in the color camera frame
-        tracked_objects.header = header
-
-        vision_info.header = header
-        # Append info to the method that the poses are now refined with the tracker
-        vision_info.method += "-M3T-time-compensated"
 
         self._detection_pub.publish(tracked_objects)
         self._vision_info_pub.publish(vision_info)
