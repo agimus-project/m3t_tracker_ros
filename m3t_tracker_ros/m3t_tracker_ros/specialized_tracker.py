@@ -319,15 +319,16 @@ class SpecializedTracker:
         for track_id in list(self._known_objects.keys()):
             if track_id not in current_tracks:
                 assigned_optimizer = self._known_objects[track_id]
-                self._known_objects.pop(track_id)
-                self._preloaded_optimizers[assigned_optimizer.class_id].append(
-                    assigned_optimizer.optimizer_name
-                )
-                optimizer = optimizers_map[assigned_optimizer.optimizer_name]
-                optimizer.root_link.body.body2world_pose = self._disable_pose
-                logs.append(
-                    ("debug", f"Optimizer for track id: '{track_id}' was cleared.")
-                )
+                if (now - assigned_optimizer.stamp) > self._params["track_timeout"]:
+                    self._known_objects.pop(track_id)
+                    self._preloaded_optimizers[assigned_optimizer.class_id].append(
+                        assigned_optimizer.optimizer_name
+                    )
+                    optimizer = optimizers_map[assigned_optimizer.optimizer_name]
+                    optimizer.root_link.body.body2world_pose = self._disable_pose
+                    logs.append(
+                        ("debug", f"Optimizer for track id: '{track_id}' was cleared.")
+                    )
 
         self._tracks_mask = [True] * len(self._last_objects_order)
         for i, track in enumerate(self._last_objects_order):
