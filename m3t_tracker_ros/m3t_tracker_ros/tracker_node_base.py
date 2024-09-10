@@ -389,10 +389,8 @@ class TrackerNodeBase(Node):
             tracked_objects.header.frame_id = camera_header.frame_id
             tracked_objects.header.stamp = camera_header.stamp
 
-            logs = self._tracker.update_tracked_objects(
-                get_tracked_objects(tracked_objects)
-            )
-            for severity, log_msg in logs:
+            self._tracker.update_tracked_objects(get_tracked_objects(tracked_objects))
+            for severity, log_msg in self._tracker.logs:
                 if severity == "debug":
                     self.get_logger().debug(log_msg)
                 elif severity == "info":

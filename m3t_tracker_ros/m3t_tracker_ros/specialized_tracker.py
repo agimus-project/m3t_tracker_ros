@@ -5,7 +5,7 @@ import numpy.typing as npt
 import pathlib
 import re
 import time
-from typing import List, Tuple, Union
+from typing import Generator, List, Tuple, Union
 
 import pym3t
 
@@ -183,6 +183,9 @@ class SpecializedTracker:
             for class_id, optimizer_type_list in optimizers.items()
         }
 
+        # Container for internal logs to propagate upwards
+        self._logs = []
+
     @property
     def tracks_mask(self) -> List[bool]:
         """Returns tracks mask indicating which of the detections were used.
@@ -192,6 +195,16 @@ class SpecializedTracker:
         :rtype: List[bool]
         """
         return self._tracks_mask
+
+    @property
+    def logs(self) -> Generator[List[Tuple[str, str]], None, None]:
+        """Returns logs generated during runtime of the code.
+
+        :yield: Log message with its severity level and message itself.
+        :rtype: Generator[List[Tuple[str, str]], None, None]
+        """
+        if len(self._logs) > 0:
+            yield self._logs.pop(0)
 
     def track_image(
         self,
@@ -285,9 +298,7 @@ class SpecializedTracker:
 
         return self._last_objects_order
 
-    def update_tracked_objects(
-        self, objects: List[TrackedObject]
-    ) -> List[Tuple[str, str]]:
+    def update_tracked_objects(self, objects: List[TrackedObject]) -> None:
         """Updates internal
         list of tracked objects. Creates new optimizer if given object
         type is missing one. Removes optimizers if not sued for long time and manages
@@ -295,9 +306,6 @@ class SpecializedTracker:
 
         :param objects: List of the objects to store for tracking.
         :type objects: List[TrackedObject]
-        :return: List tuples with logs about processed objects and their severity level.
-            In a form Tuple[severity, log string].
-        :rtype: List[Tuple[str, str]]
         """
         self._last_objects_order = objects
 
@@ -308,10 +316,12 @@ class SpecializedTracker:
         optimizers_map = {
             optimizer.name: optimizer for optimizer in self._tracker.optimizers
         }
+        modalities_map = {
+            modality.name: modality for modality in self._tracker.modalities
+        }
         for optimizer in optimizers_map.values():
             optimizer.root_link.body.body2world_pose = self._disable_pose
 
-        logs = []
         now = time.time()
 
         # Remove too old optimizers from pool of currently available tracks
@@ -326,7 +336,7 @@ class SpecializedTracker:
                     )
                     optimizer = optimizers_map[assigned_optimizer.optimizer_name]
                     optimizer.root_link.body.body2world_pose = self._disable_pose
-                    logs.append(
+                    self._logs.append(
                         ("debug", f"Optimizer for track id: '{track_id}' was cleared.")
                     )
 
@@ -338,10 +348,10 @@ class SpecializedTracker:
                 class_id = self._outer_to_inner_classes[track.class_id]
                 # If not new tracks can be assigned for a given object, ignore it
                 if class_id not in self._preloaded_optimizers:
-                    logs.append(("warn", f"Unknown class id: '{class_id}'"))
+                    self._logs.append(("warn", f"Unknown class id: '{class_id}'"))
                     continue
                 if len(self._preloaded_optimizers[class_id]) == 0:
-                    logs.append(
+                    self._logs.append(
                         (
                             "warn",
                             f"No more optimizers for class id: '{class_id}'. "
@@ -357,6 +367,19 @@ class SpecializedTracker:
                     stamp=now,
                 )
 
+                object_name = self._known_objects[track.id].optimizer_name.removesuffix(
+                    "_optimizer"
+                )
+                modalities = [
+                    modality
+                    for name, modality in modalities_map.items()
+                    if object_name in name
+                ]
+                # Clear modality data and underlying histogram
+                for m in modalities:
+                    m.body.body2world_pose = track.body2camera_pose
+                    m.StartModality(0, 0)
+
             optimizer = optimizers_map[self._known_objects[track.id].optimizer_name]
             optimizer.root_link.body.body2world_pose = track.body2camera_pose
 
@@ -365,8 +388,6 @@ class SpecializedTracker:
             for i, obj in enumerate(self._last_objects_order)
             if self._tracks_mask[i]
         ]
-
-        return logs
 
     def update_params(self, params: dict) -> None:
         """Updates internally stored parameters of the node. Loops over all internal
