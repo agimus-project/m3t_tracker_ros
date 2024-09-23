@@ -58,7 +58,7 @@ class ImageTimeBuffer:
         """
         return self._queue[idx]
 
-    def __next__(
+    def loop_from_point(
         self, starting_stamp: Union[Time, None] = None
     ) -> Generator[ImageQueueData, None, None]:
         """Iterates over images from the buffer starting from the one with the closest

@@ -350,6 +350,8 @@ class TrackerNodeBase(Node):
         if len(tracked_objects.detections) == 0:
             raise RuntimeError("All new detections were discarded!")
 
+        stamp_msg = stamp.to_msg()
+
         if new_detection or self._params.compensate_camera_motion:
             # If camera frame is used as a stationary frame its
             # motion will not be taken into account
@@ -359,8 +361,6 @@ class TrackerNodeBase(Node):
                 else frame_id
             )
 
-            camera_stamp = Time.from_msg(stamp)
-
             def _transform_frame(detection: Detection2D) -> Detection2D:
                 # Transform poses of the objects to account for a moving camera
                 # Additionally change frame in which those objects are represented
@@ -369,7 +369,7 @@ class TrackerNodeBase(Node):
                 try:
                     transform = self._buffer.lookup_transform_full(
                         frame_id,
-                        camera_stamp,
+                        stamp,
                         detection_header.frame_id,
                         Time.from_msg(detection_header.stamp),
                         stationary_frame,
@@ -389,7 +389,7 @@ class TrackerNodeBase(Node):
             ]
 
             tracked_objects.header.frame_id = frame_id
-            tracked_objects.header.stamp = stamp
+            tracked_objects.header.stamp = stamp_msg
 
             self._tracker.update_tracked_objects(get_tracked_objects(tracked_objects))
 
@@ -402,7 +402,7 @@ class TrackerNodeBase(Node):
             depth2color_pose,
         )
 
-        new_header = Header(stamp=stamp, frame_id=frame_id)
+        new_header = Header(stamp=stamp_msg, frame_id=frame_id)
         return update_detection_poses(tracked_objects, tracking_results, new_header)
 
     def _check_image_time_ok(self, *args) -> bool:

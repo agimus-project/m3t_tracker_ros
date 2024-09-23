@@ -59,7 +59,8 @@ class TimeCatchupNode(TrackerNodeBase):
 
         self._image_buffer.append(
             ImageQueueData(
-                camera_header,
+                Time.from_msg(camera_header.stamp),
+                camera_header.frame_id,
                 color_image,
                 color_camera_k,
                 depth_image,
@@ -106,7 +107,7 @@ class TimeCatchupNode(TrackerNodeBase):
         update_detections = True
         start_time = Time.from_msg(tracked_objects.header.stamp)
         # Loop over saved images
-        for im_data in self._image_buffer(start_time):
+        for im_data in self._image_buffer.loop_from_point(start_time):
             try:
                 tracked_objects = self._perform_tracking_step(
                     im_data.stamp,
@@ -127,7 +128,7 @@ class TimeCatchupNode(TrackerNodeBase):
         self._buffer_cnt = 0
 
         header = Header(
-            frame_id=im_data.camera_header.frame_id,
+            frame_id=im_data.frame_id,
             stamp=self.get_clock().now().to_msg(),
         )
 
