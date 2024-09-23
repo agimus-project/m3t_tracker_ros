@@ -14,6 +14,14 @@ m3t_tracker_ros:
     description: Regex used to match class id with filename of associated mesh file.
     read_only: true
 
+  image_timeout:
+    type: double
+    default_value: 5.0
+    description: Time [seconds] before image in buffer is considered too old to be used.
+    validation:
+      gt_eq<>: 0.0
+    read_only: true
+
   filename_format:
     type: string
     default_value: ${class_id}.${file_fmt}

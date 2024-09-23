@@ -267,7 +267,8 @@ class TrackerNodeBase(Node):
 
     def _perform_tracking_step(
         self,
-        camera_header: Header,
+        stamp: Time,
+        frame_id: str,
         color_image: npt.NDArray[np.uint8],
         color_camera_k: npt.NDArray[np.float64],
         depth_image: Union[None, npt.NDArray[np.uint16]],
@@ -281,9 +282,10 @@ class TrackerNodeBase(Node):
         tracked objects inside of the CashedTracker class. If configured, updates poses
         of the objects with changes in the kinematic model of the robot.
 
-        :param camera_header: Header associated with color camera used to obtain its
-            frame id and timestamp for spatial conversions.
-        :type camera_header: std_msgs.msg.Header
+        :param stamp: Timestamp associated with color camera.
+        :type stamp: rclpy.time.Time
+        :param frame_id: Frame associated with color camera sensor used for spatial conversions.
+        :type frame_id: str
         :param color_image: OpenCV style RBG8 color image.
         :type color_image: npt.NDArray[np.uint8]
         :param color_camera_k: Matrix with intrinsic parameters of the color camera.
@@ -354,10 +356,10 @@ class TrackerNodeBase(Node):
             stationary_frame = (
                 self._params.camera_motion_stationary_frame_id
                 if self._params.compensate_camera_motion
-                else camera_header.frame_id
+                else frame_id
             )
 
-            camera_stamp = Time.from_msg(camera_header.stamp)
+            camera_stamp = Time.from_msg(stamp)
 
             def _transform_frame(detection: Detection2D) -> Detection2D:
                 # Transform poses of the objects to account for a moving camera
@@ -366,7 +368,7 @@ class TrackerNodeBase(Node):
                 detection_header = detection.header
                 try:
                     transform = self._buffer.lookup_transform_full(
-                        camera_header.frame_id,
+                        frame_id,
                         camera_stamp,
                         detection_header.frame_id,
                         Time.from_msg(detection_header.stamp),
@@ -386,8 +388,8 @@ class TrackerNodeBase(Node):
                 _transform_frame(detection) for detection in tracked_objects.detections
             ]
 
-            tracked_objects.header.frame_id = camera_header.frame_id
-            tracked_objects.header.stamp = camera_header.stamp
+            tracked_objects.header.frame_id = frame_id
+            tracked_objects.header.stamp = stamp
 
             self._tracker.update_tracked_objects(get_tracked_objects(tracked_objects))
 
@@ -400,7 +402,8 @@ class TrackerNodeBase(Node):
             depth2color_pose,
         )
 
-        return update_detection_poses(tracked_objects, tracking_results, camera_header)
+        new_header = Header(stamp=stamp, frame_id=frame_id)
+        return update_detection_poses(tracked_objects, tracking_results, new_header)
 
     def _check_image_time_ok(self, *args) -> bool:
         """Checks timestamps of all detections to see if they are within time window
@@ -436,20 +439,19 @@ class TrackerNodeBase(Node):
         return any(diff > delta for diff in self._detection_time_delta(*args))
 
     def _detection_time_delta(
-        self, detections: Detection2DArray, image_header: Header
+        self, detections: Detection2DArray, image_stamp: Time
     ) -> List[int]:
         """Computes time differences between image time stamp and all
         detections in the array.
 
         :param detections: Array of detections to check for timestamp.
         :type detections: vision_msgs.msg.Detection2DArray
-        :param image_header: Image header used to obtain the timestamp.
-        :type image_header: std_msgs.msg.Header
+        :param image_stamp: Image header used to obtain the timestamp.
+        :type image_stamp: rclpy.time.Time
         :return: List of time differences [nanoseconds] between detection timestamps
             and image time stamp.
         :rtype: List[int]
         """
-        image_stamp = Time.from_msg(image_header.stamp)
         return [
             (Time.from_msg(det.header.stamp) - image_stamp).nanoseconds
             for det in detections.detections
