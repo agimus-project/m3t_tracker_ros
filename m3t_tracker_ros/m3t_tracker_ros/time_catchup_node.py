@@ -1,28 +1,15 @@
-from dataclasses import dataclass
-from typing import Union
 import numpy as np
 import numpy.typing as npt
+from typing import Union
 
 import rclpy
+from rclpy.time import Time
 
 from std_msgs.msg import Header
 from vision_msgs.msg import Detection2DArray, VisionInfo
 
+from m3t_tracker_ros.image_time_buffer import ImageQueueData, ImageTimeBuffer
 from m3t_tracker_ros.tracker_node_base import TrackerNodeBase
-
-
-@dataclass
-class ImageQueueData:
-    """Class storing all data relevant to the tracked images.
-    Contains time stamp, color image and optional depth image.
-    """
-
-    camera_header: Header
-    color_image: npt.NDArray[np.uint8]
-    color_camera_k: npt.NDArray[np.float64]
-    depth_image: Union[None, npt.NDArray[np.float16]]
-    depth_camera_k: Union[None, npt.NDArray[np.float64]]
-    depth2color_pose: Union[None, npt.NDArray[np.float32]]
 
 
 class TimeCatchupNode(TrackerNodeBase):
@@ -36,8 +23,7 @@ class TimeCatchupNode(TrackerNodeBase):
         buffer with a counter to store incoming images."""
         super().__init__(node_name="m3t_time_catchup_node", **kwargs)
 
-        self._image_buffer = []
-        self._buffer_cnt = 0
+        self._image_buffer = ImageTimeBuffer(self, self._params.image_timeout)
 
         # Publishers
         self._intermediate_detection_pub = self.create_publisher(
@@ -76,21 +62,20 @@ class TimeCatchupNode(TrackerNodeBase):
             None if not used.
         :type depth2color_pose: Union[None, npt.NDArray[np.float32]]
         """
-        im_data = ImageQueueData(
-            camera_header,
-            color_image,
-            color_camera_k,
-            depth_image,
-            depth_camera_k,
-            depth2color_pose,
+
+        self._refresh_parameters()
+
+        self._image_buffer.append(
+            ImageQueueData(
+                Time.from_msg(camera_header.stamp),
+                camera_header.frame_id,
+                color_image,
+                color_camera_k,
+                depth_image,
+                depth_camera_k,
+                depth2color_pose,
+            )
         )
-        # If expansion of the list is not needed, just use existing memory
-        if self._buffer_cnt < len(self._image_buffer):
-            self._image_buffer[self._buffer_cnt] = im_data
-        # Expand it only if needed
-        else:
-            self._image_buffer.append(im_data)
-        self._buffer_cnt += 1
 
     def _detection_data_cb(
         self, detections: Detection2DArray, vision_info: VisionInfo
@@ -108,45 +93,36 @@ class TimeCatchupNode(TrackerNodeBase):
         self._refresh_parameters()
 
         # No images to refine. Do not compensate in the time.
-        if self._buffer_cnt == 0:
+        if len(self._image_buffer) == 0:
             return
 
-        # if self._check_image_time_too_new(
-        #     detections, self._image_buffer[0].camera_header
-        # ):
-        #     self.get_logger().warn(
-        #         "Time difference between detections and first image in the buffer "
-        #         "is too big. Tracker won't be able to start tracking!"
-        #     )
-        #     return
+        if self._check_image_time_too_new(detections, self._image_buffer[0].stamp):
+            self.get_logger().warn(
+                "Time difference between detections and first image in the buffer "
+                "is too big. Tracker won't be able to start tracking!"
+            )
+            return
 
-        # if self._check_image_time_too_old(
-        #     detections, self._image_buffer[self._buffer_cnt - 1].camera_header
-        # ):
-        #     self.get_logger().warn(
-        #         "Time difference between detections and last image in the buffer "
-        #         "is too big. All of the images are too old!"
-        #     )
-        #     return
+        if self._check_image_time_too_old(detections, self._image_buffer[-1].stamp):
+            self.get_logger().warn(
+                "Time difference between detections and last image in the buffer "
+                "is too big. All of the images are too old!"
+            )
+            return
 
         # Append info to the method that the poses are now refined with the tracker
         vision_info.method += "-M3T-time-compensated"
 
         tracked_objects = detections
-        skipped_images = 0
-        # Loop over saved images
+
         update_detections = True
-        for i in range(self._buffer_cnt):
-            im_data = self._image_buffer[i]
-
-            # Check
-            if not self._check_image_time_ok(detections, im_data.camera_header):
-                skipped_images += 1
-                continue
-
+        start_time = Time.from_msg(tracked_objects.header.stamp)
+        # Loop over saved images
+        for im_data in self._image_buffer.loop_from_point(start_time):
             try:
                 tracked_objects = self._perform_tracking_step(
-                    im_data.camera_header,
+                    im_data.stamp,
+                    im_data.frame_id,
                     im_data.color_image,
                     im_data.color_camera_k,
                     im_data.depth_image,
@@ -168,13 +144,6 @@ class TimeCatchupNode(TrackerNodeBase):
                 self._intermediate_vision_info_pub.publish(vision_info)
             except RuntimeError:
                 pass
-
-        if skipped_images == self._buffer_cnt:
-            self.get_logger().warn(
-                "Time difference between detections and all images in the buffer "
-                "was too big for the tracker to start tracking!"
-            )
-            return
 
         # Reset the buffer counter
         self._buffer_cnt = 0
