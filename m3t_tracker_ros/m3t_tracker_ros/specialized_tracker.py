@@ -4,7 +4,8 @@ import numpy as np
 import numpy.typing as npt
 import pathlib
 import re
-from typing import List, Tuple, Union
+import time
+from typing import Generator, List, Tuple, Union
 
 import pym3t
 
@@ -20,6 +21,19 @@ class TrackedObject:
     class_id: str
     # Pose relative to camera frame
     body2camera_pose: npt.NDArray[np.float64]
+
+
+@dataclass
+class AssignedOptimizer:
+    """Structure holding information of used optimizer with a time stamp
+    when it was last used."""
+
+    # Name of the assigned optimizer
+    optimizer_name: str
+    # Class id of assigned optimizer
+    class_id: str
+    # Time stamp when tracker was last used
+    stamp: float
 
 
 class SpecializedTracker:
@@ -128,8 +142,10 @@ class SpecializedTracker:
         # Cashed objects
         # Stores currently tracked object references
         self._last_objects_order = []  # List[TrackedObject]
-        # Dict[str, str]
+        # Dict[str, AssignedOptimizer]
         self._known_objects = {}
+        # List[bool]
+        self._tracks_mask = []
 
         self._counter = 0
         self._execute_starting_step = True
@@ -166,6 +182,29 @@ class SpecializedTracker:
             class_id: [optimizer.name for optimizer in optimizer_type_list]
             for class_id, optimizer_type_list in optimizers.items()
         }
+
+        # Container for internal logs to propagate upwards
+        self._logs = []
+
+    @property
+    def tracks_mask(self) -> List[bool]:
+        """Returns tracks mask indicating which of the detections were used.
+
+        :return: List where ``True`` indicates detection is used during tracking and ``False``
+            indicating the detection is omitted during tracking..
+        :rtype: List[bool]
+        """
+        return self._tracks_mask
+
+    @property
+    def logs(self) -> Generator[List[Tuple[str, str]], None, None]:
+        """Returns logs generated during runtime of the code.
+
+        :yield: Log message with its severity level and message itself.
+        :rtype: Generator[List[Tuple[str, str]], None, None]
+        """
+        if len(self._logs) > 0:
+            yield self._logs.pop(0)
 
     def track_image(
         self,
@@ -252,9 +291,10 @@ class SpecializedTracker:
 
         # Update body poses
         for i, track in enumerate(self._last_objects_order):
-            self._last_objects_order[i].body2camera_pose = optimizers_poses[
-                self._known_objects[track.id]
-            ]
+            if self._tracks_mask[i]:
+                self._last_objects_order[i].body2camera_pose = optimizers_poses[
+                    self._known_objects[track.id].optimizer_name
+                ]
 
         return self._last_objects_order
 
@@ -266,38 +306,88 @@ class SpecializedTracker:
 
         :param objects: List of the objects to store for tracking.
         :type objects: List[TrackedObject]
-        :raises RuntimeError: Class id of known object changed.
-        :raises RuntimeError: Reinitialization of the tracker failed.
         """
         self._last_objects_order = objects
 
         # If nothing to track skip the rest
         if len(self._last_objects_order) == 0:
-            return
+            return []
 
         optimizers_map = {
             optimizer.name: optimizer for optimizer in self._tracker.optimizers
         }
+        modalities_map = {
+            modality.name: modality for modality in self._tracker.modalities
+        }
         for optimizer in optimizers_map.values():
             optimizer.root_link.body.body2world_pose = self._disable_pose
 
-        for track in self._last_objects_order:
-            # Convert class id format
-            class_id = self._outer_to_inner_classes[track.class_id]
+        now = time.time()
+
+        # Remove too old optimizers from pool of currently available tracks
+        current_tracks = {track.id for track in self._last_objects_order}
+        for track_id in list(self._known_objects.keys()):
+            if track_id not in current_tracks:
+                assigned_optimizer = self._known_objects[track_id]
+                if (now - assigned_optimizer.stamp) > self._params["track_timeout"]:
+                    self._known_objects.pop(track_id)
+                    self._preloaded_optimizers[assigned_optimizer.class_id].append(
+                        assigned_optimizer.optimizer_name
+                    )
+                    optimizer = optimizers_map[assigned_optimizer.optimizer_name]
+                    optimizer.root_link.body.body2world_pose = self._disable_pose
+                    self._logs.append(
+                        ("debug", f"Optimizer for track id: '{track_id}' was cleared.")
+                    )
+
+        self._tracks_mask = [True] * len(self._last_objects_order)
+        for i, track in enumerate(self._last_objects_order):
             # The track was not previously known
             if track.id not in self._known_objects:
+                # Convert class id format
+                class_id = self._outer_to_inner_classes[track.class_id]
                 # If not new tracks can be assigned for a given object, ignore it
                 if class_id not in self._preloaded_optimizers:
-                    raise RuntimeError(f"Unknown class id: '{class_id}'")
+                    self._logs.append(("warn", f"Unknown class id: '{class_id}'"))
+                    continue
                 if len(self._preloaded_optimizers[class_id]) == 0:
-                    raise RuntimeError(f"No more optimizers for class id: '{class_id}'")
+                    self._logs.append(
+                        (
+                            "warn",
+                            f"No more optimizers for class id: '{class_id}'. "
+                            + "Track will be ignored.",
+                        )
+                    )
+                    self._tracks_mask[i] = False
+                    continue
                 # Pick first available optimizer and remove it from the list
-                self._known_objects[track.id] = self._preloaded_optimizers[
-                    class_id
-                ].pop(0)
+                self._known_objects[track.id] = AssignedOptimizer(
+                    optimizer_name=self._preloaded_optimizers[class_id].pop(0),
+                    class_id=class_id,
+                    stamp=now,
+                )
 
-            optimizer = optimizers_map[self._known_objects[track.id]]
+                object_name = self._known_objects[track.id].optimizer_name.removesuffix(
+                    "_optimizer"
+                )
+                modalities = [
+                    modality
+                    for name, modality in modalities_map.items()
+                    if object_name in name
+                ]
+                # Clear modality data and underlying histogram
+                for m in modalities:
+                    m.body.body2world_pose = track.body2camera_pose
+                    m.StartModality(0, 0)
+
+            optimizer = optimizers_map[self._known_objects[track.id].optimizer_name]
             optimizer.root_link.body.body2world_pose = track.body2camera_pose
+
+        self._last_objects_order = [
+            obj
+            for i, obj in enumerate(self._last_objects_order)
+            if self._tracks_mask[i]
+        ]
 
     def update_params(self, params: dict) -> None:
         """Updates internally stored parameters of the node. Loops over all internal

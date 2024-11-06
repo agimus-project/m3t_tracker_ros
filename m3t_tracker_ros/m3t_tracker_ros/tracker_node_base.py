@@ -303,12 +303,12 @@ class TrackerNodeBase(Node):
         :param new_detection: Flag indicating change of tracked objects. Passed to cashed
             tracker to update its internal structures.
         :type new_detection: bool, optional
-        :raises RuntimeError: Passed objects to track are an empty array.
+        :raises RuntimeError: All new detections were discarded.
         :return: Array of tracked objects with refined poses and updated timestamps.
         :rtype: Detection2DArray
         """
         if len(tracked_objects.detections) == 0:
-            raise RuntimeError("No objects to track")
+            return tracked_objects
 
         obj_counter = {obj: 0 for obj in self._params.tracked_objects}
 
@@ -392,6 +392,15 @@ class TrackerNodeBase(Node):
             tracked_objects.header.stamp = stamp_msg
 
             self._tracker.update_tracked_objects(get_tracked_objects(tracked_objects))
+            for severity, log_msg in self._tracker.logs:
+                if severity == "debug":
+                    self.get_logger().debug(log_msg)
+                elif severity == "info":
+                    self.get_logger().info(log_msg)
+                elif severity == "warn":
+                    self.get_logger().warn(log_msg)
+                elif severity == "error":
+                    self.get_logger().error(log_msg)
 
         # Perform tracking step
         tracking_results = self._tracker.track_image(
@@ -401,6 +410,12 @@ class TrackerNodeBase(Node):
             depth_camera_k,
             depth2color_pose,
         )
+
+        tracked_objects.detections = [
+            obj
+            for i, obj in enumerate(tracked_objects.detections)
+            if self._tracker.tracks_mask[i]
+        ]
 
         new_header = Header(stamp=stamp_msg, frame_id=frame_id)
         return update_detection_poses(tracked_objects, tracking_results, new_header)
