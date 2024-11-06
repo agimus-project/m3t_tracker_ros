@@ -134,7 +134,7 @@ class TimeCatchupNode(TrackerNodeBase):
                 update_detections = False
 
                 header = Header(
-                    frame_id=im_data.camera_header.frame_id,
+                    frame_id=im_data.frame_id,
                     stamp=self.get_clock().now().to_msg(),
                 )
                 tracked_objects.header = header
