@@ -112,8 +112,8 @@ def launch_setup(
     )
 
     # Start mesh publisher
-    happypose_marker_publisher = Node(
-        package="happypose_marker_publisher",
+    detection2d_marker_publisher = Node(
+        package="detection2d_marker_publisher",
         executable="marker_publisher",
         output="screen",
         namespace="m3t_tracker",
@@ -179,7 +179,7 @@ def launch_setup(
                     rviz_node,
                     static_transform_publisher_node,
                     m3t_tracker,
-                    happypose_marker_publisher,
+                    detection2d_marker_publisher,
                 ],
             )
         ),
