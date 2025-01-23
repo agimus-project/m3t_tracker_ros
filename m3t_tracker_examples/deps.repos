@@ -4,7 +4,7 @@ repositories:
     # Awaits PR #985 in the upstream
     url: https://github.com/ros-perception/image_pipeline
     version: humble
-  happypose_marker_publisher:
+  detection2d_marker_publisher:
     type: git
-    url: https://gitlab.laas.fr/kwojciecho/happypose_marker_publisher
-    version: devel
+    url: https://github.com/agimus-project/detection2d_marker_publisher.git
+    version: main
